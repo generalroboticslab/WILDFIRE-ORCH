@@ -1,8 +1,12 @@
 # WILDFIRE-ORCH
 
-The full-stack human-AI teaming interface for CREW-Wildfire and its deployment on AWS with Docker. It takes the wildfire simulation environment ([CREW-Wildfire](https://github.com/generalroboticslab/CREW-Wildfire)) and the ORCH multi-agent algorithm that drives the AI agents ([ORCH](https://github.com/generalroboticslab/ORCH), called WILDFIRE in this code) and packages them as a website where human players and AI agents fight fires, rescue civilians and manage resources together on a shared map. This repository holds everything needed to run that on your own server: prebuilt containers, a reverse proxy with automatic HTTPS, and a choice between OpenAI's API and a self-hosted model (for example Gemma served with vLLM) so that no API key is needed. For the environment and algorithm research code, see those two repositories; use this one to deploy and play.
-
 ![WILDFIRE-ORCH](assets/wildfire-teaser.png)
+
+![The web interface in action: a human player and the ORCH agents fighting a fire together](assets/orch-website-demo.gif)
+
+![The game view: your agent's camera and status on the left, the team and chat with the AI agents on the right](assets/WILDFIRE-ORCH-interface.png)
+
+The full-stack human-AI teaming interface for CREW-Wildfire and its deployment on AWS with Docker. It takes the wildfire simulation environment ([CREW-Wildfire](https://github.com/generalroboticslab/CREW-Wildfire)) and the ORCH multi-agent algorithm that drives the AI agents ([ORCH](https://github.com/generalroboticslab/ORCH)) and packages them as a website where human players and AI agents fight fires, rescue civilians and manage resources together on a shared map. This repository holds everything needed to run that on your own server: prebuilt containers, a reverse proxy with automatic HTTPS, and a choice between OpenAI's API and a self-hosted model (for example Gemma served with vLLM) so that no API key is needed. For the environment and algorithm research code, see those two repositories; use this one to deploy and play.
 
 This guide takes you from nothing to a running copy on your own Amazon Web Services (AWS) server. You do not need to write or understand code: every command can be copied and pasted as-is.
 
@@ -370,6 +374,8 @@ docker exec -w /app/crew-algorithms/crew_algorithms/wildfire_alg -e PYTHONPATH=/
 - In local mode add the model settings to the end of the command: `envs.llm_model=local envs.llm_url=http://vllm:8000/v1 envs.model_name=<the LLM_MODEL from .env>`.
 - Level names are the presets defined in `crew-algorithms/crew_algorithms/wildfire_alg/config/build_config.py` (`create_level_presets`), for example `Cut_Trees_Sparse_small`, `Scout_Fire_small`, `Transport_Firefighters_small`, `Rescue_Civilians_Known_Location_small`, `Suppress_Fire_Contain`, `Suppress_Fire_Extinguish`, `Full_Game`.
 - The research baselines from the ORCH paper are included and run the same way, with `WILDFIRE` replaced by `COELA`, `CAMON`, `Embodied` or `HMAS_2`. They support OpenAI mode only.
+
+Alternatively, to run AI-only experiments locally, look to ([ORCH](https://github.com/generalroboticslab/ORCH)) for reference.
 
 ## Troubleshooting
 
