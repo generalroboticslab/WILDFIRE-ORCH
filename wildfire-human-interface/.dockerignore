@@ -1,0 +1,10 @@
+# Keep the build context small: sources only.
+node_modules
+.next
+.git
+.gitignore
+*.md
+Dockerfile*
+.dockerignore
+.env*
+__pycache__

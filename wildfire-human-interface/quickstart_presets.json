@@ -1,0 +1,798 @@
+{
+  "gw_quickstart_cut_trees_1": {
+    "name": "GW Quickstart: Cut Trees 1",
+    "description": "Quick demo with 3 firefighters",
+    "level": "Cut_Trees_Sparse_small",
+    "seed": "42",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "hierarchy": {
+      "managers": ["AGENT_4"],
+      "config": {
+        "AGENT_4": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3"],
+          "type": "horizontal",
+          "team_name": "Alpha Squad"
+        }
+      }
+    },
+    "difficulty": "Easy",
+    "recommended_players": 1
+  },
+  
+  "gw_quickstart_cut_trees_2": {
+    "name": "GW Quickstart: Cut Trees 2",
+    "description": "Quick demo with 10 firefighters",
+    "level": "Cut_Trees_Sparse_large",
+    "seed": "42",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "hierarchy": {
+      "managers": ["AGENT_11"],
+      "config": {
+        "AGENT_11": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7", "AGENT_8", "AGENT_9", "AGENT_10"],
+          "type": "horizontal",
+          "team_name": "Alpha Squad"
+        }
+      }
+    },
+    "difficulty": "Easy",
+    "recommended_players": 1
+  },
+
+  "gw_quickstart_scout_fire": {
+    "name": "GW Quickstart: Scout Fire",
+    "description": "Quick demo with 5 drones",
+    "level": "Scout_Fire_large",
+    "seed": "42",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "horizontal",
+          "team_name": "Scouting Team"
+        }
+      }
+    },
+    "difficulty": "Easy",
+    "recommended_players": 1
+  },
+
+
+  "arl_demo_quickstart": {
+    "name": "ARL Demo Quickstart",
+    "description": "Quick demo with 5 firefighters and 1 drone managed by a single vertical team.",
+    "level": "Demo_Level",
+    "seed": "42",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "hierarchy": {
+      "managers": ["AGENT_7"],
+      "config": {
+        "AGENT_7": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6"],
+          "type": "vertical",
+          "team_name": "Alpha Squad"
+        }
+      }
+    },
+    "difficulty": "Easy",
+    "recommended_players": 1
+  },
+  
+  "search_and_rescue": {
+    "name": "Search & Rescue",
+    "description": "Rescue mission with drone scouts and firefighters",
+    "level": "Rescue_Civilians_Search_and_Rescue",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "hierarchy": {
+      "managers": ["AGENT_8"],
+      "config": {
+        "AGENT_8": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7"],
+          "type": "vertical",
+          "team_name": "Rescue Command"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  
+  "full_game_quickstart": {
+    "name": "Full Game Quickstart",
+    "description": "Complete wildfire task with 3 specialized sub-teams.",
+    "level": "Full_Game",
+    "seed": 789,
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "hierarchy": {
+      "managers": ["AGENT_16", "AGENT_17", "AGENT_18", "AGENT_19"],
+      "config": {
+        "AGENT_16": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_11", "AGENT_14"],
+          "type": "horizontal",
+          "team_name": "Team A"
+        },
+        "AGENT_17": {
+          "children": ["AGENT_6", "AGENT_7", "AGENT_8", "AGENT_9", "AGENT_10", "AGENT_15"],
+          "type": "horizontal",
+          "team_name": "Team B"
+        },
+        "AGENT_18": {
+          "children": ["AGENT_12", "AGENT_13"],
+          "type": "horizontal",
+          "team_name": "Recon Team"
+        },
+        "AGENT_19": {
+          "children": ["AGENT_16", "AGENT_17", "AGENT_18"],
+          "type": "vertical",
+          "team_name": "Main Team"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+
+  "special_drone_lost_1": {
+    "name": "Special: Drone Lost (Seed 1)",
+    "description": "A drone goes missing mid-game. Adapt scouting strategy with remaining drones.",
+    "level": "Scout_Fire_Drone_Lost",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 42,
+    "hierarchy": {
+      "managers": ["AGENT_4"],
+      "config": {
+        "AGENT_4": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3"],
+          "type": "horizontal",
+          "team_name": "Scout Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_drone_lost_2": {
+    "name": "Special: Drone Lost (Seed 2)",
+    "description": "A drone goes missing mid-game. Adapt scouting strategy with remaining drones.",
+    "level": "Scout_Fire_Drone_Lost",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 137,
+    "hierarchy": {
+      "managers": ["AGENT_4"],
+      "config": {
+        "AGENT_4": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3"],
+          "type": "horizontal",
+          "team_name": "Scout Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_drone_lost_3": {
+    "name": "Special: Drone Lost (Seed 3)",
+    "description": "A drone goes missing mid-game. Adapt scouting strategy with remaining drones.",
+    "level": "Scout_Fire_Drone_Lost",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 256,
+    "hierarchy": {
+      "managers": ["AGENT_4"],
+      "config": {
+        "AGENT_4": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3"],
+          "type": "horizontal",
+          "team_name": "Scout Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_drone_lost_4": {
+    "name": "Special: Drone Lost (Seed 4)",
+    "description": "A drone goes missing mid-game. Adapt scouting strategy with remaining drones.",
+    "level": "Scout_Fire_Drone_Lost",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 503,
+    "hierarchy": {
+      "managers": ["AGENT_4"],
+      "config": {
+        "AGENT_4": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3"],
+          "type": "horizontal",
+          "team_name": "Scout Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_drone_lost_5": {
+    "name": "Special: Drone Lost (Seed 5)",
+    "description": "A drone goes missing mid-game. Adapt scouting strategy with remaining drones.",
+    "level": "Scout_Fire_Drone_Lost",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 819,
+    "hierarchy": {
+      "managers": ["AGENT_4"],
+      "config": {
+        "AGENT_4": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3"],
+          "type": "horizontal",
+          "team_name": "Scout Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+
+  "special_helicopter_down_1": {
+    "name": "Special: Helicopter Down (Seed 1)",
+    "description": "A helicopter goes out of commission mid-transport. Reorganize with the remaining helicopter.",
+    "level": "Transport_Helicopter_Down",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 42,
+    "hierarchy": {
+      "managers": ["AGENT_13", "AGENT_14", "AGENT_15"],
+      "config": {
+        "AGENT_13": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_11"],
+          "type": "horizontal",
+          "team_name": "Transport Team A"
+        },
+        "AGENT_14": {
+          "children": ["AGENT_6", "AGENT_7", "AGENT_8", "AGENT_9", "AGENT_10", "AGENT_12"],
+          "type": "horizontal",
+          "team_name": "Transport Team B"
+        },
+        "AGENT_15": {
+          "children": ["AGENT_13", "AGENT_14"],
+          "type": "horizontal",
+          "team_name": "Transport Command"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_helicopter_down_2": {
+    "name": "Special: Helicopter Down (Seed 2)",
+    "description": "A helicopter goes out of commission mid-transport. Reorganize with the remaining helicopter.",
+    "level": "Transport_Helicopter_Down",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 314,
+    "hierarchy": {
+      "managers": ["AGENT_13", "AGENT_14", "AGENT_15"],
+      "config": {
+        "AGENT_13": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_11"],
+          "type": "horizontal",
+          "team_name": "Transport Team A"
+        },
+        "AGENT_14": {
+          "children": ["AGENT_6", "AGENT_7", "AGENT_8", "AGENT_9", "AGENT_10", "AGENT_12"],
+          "type": "horizontal",
+          "team_name": "Transport Team B"
+        },
+        "AGENT_15": {
+          "children": ["AGENT_13", "AGENT_14"],
+          "type": "horizontal",
+          "team_name": "Transport Command"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_helicopter_down_3": {
+    "name": "Special: Helicopter Down (Seed 3)",
+    "description": "A helicopter goes out of commission mid-transport. Reorganize with the remaining helicopter.",
+    "level": "Transport_Helicopter_Down",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 628,
+    "hierarchy": {
+      "managers": ["AGENT_13", "AGENT_14", "AGENT_15"],
+      "config": {
+        "AGENT_13": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_11"],
+          "type": "horizontal",
+          "team_name": "Transport Team A"
+        },
+        "AGENT_14": {
+          "children": ["AGENT_6", "AGENT_7", "AGENT_8", "AGENT_9", "AGENT_10", "AGENT_12"],
+          "type": "horizontal",
+          "team_name": "Transport Team B"
+        },
+        "AGENT_15": {
+          "children": ["AGENT_13", "AGENT_14"],
+          "type": "horizontal",
+          "team_name": "Transport Command"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_helicopter_down_4": {
+    "name": "Special: Helicopter Down (Seed 4)",
+    "description": "A helicopter goes out of commission mid-transport. Reorganize with the remaining helicopter.",
+    "level": "Transport_Helicopter_Down",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 741,
+    "hierarchy": {
+      "managers": ["AGENT_13", "AGENT_14", "AGENT_15"],
+      "config": {
+        "AGENT_13": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_11"],
+          "type": "horizontal",
+          "team_name": "Transport Team A"
+        },
+        "AGENT_14": {
+          "children": ["AGENT_6", "AGENT_7", "AGENT_8", "AGENT_9", "AGENT_10", "AGENT_12"],
+          "type": "horizontal",
+          "team_name": "Transport Team B"
+        },
+        "AGENT_15": {
+          "children": ["AGENT_13", "AGENT_14"],
+          "type": "horizontal",
+          "team_name": "Transport Command"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_helicopter_down_5": {
+    "name": "Special: Helicopter Down (Seed 5)",
+    "description": "A helicopter goes out of commission mid-transport. Reorganize with the remaining helicopter.",
+    "level": "Transport_Helicopter_Down",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 955,
+    "hierarchy": {
+      "managers": ["AGENT_13", "AGENT_14", "AGENT_15"],
+      "config": {
+        "AGENT_13": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_11"],
+          "type": "horizontal",
+          "team_name": "Transport Team A"
+        },
+        "AGENT_14": {
+          "children": ["AGENT_6", "AGENT_7", "AGENT_8", "AGENT_9", "AGENT_10", "AGENT_12"],
+          "type": "horizontal",
+          "team_name": "Transport Team B"
+        },
+        "AGENT_15": {
+          "children": ["AGENT_13", "AGENT_14"],
+          "type": "horizontal",
+          "team_name": "Transport Command"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+
+  "special_surprise_civilians_1": {
+    "name": "Special: Surprise Civilians (Seed 1)",
+    "description": "Extra civilians appear mid-game in a new area. Redirect rescue efforts.",
+    "level": "Rescue_Civilians_Surprise",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 100,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "horizontal",
+          "team_name": "Rescue Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_surprise_civilians_2": {
+    "name": "Special: Surprise Civilians (Seed 2)",
+    "description": "Extra civilians appear mid-game in a new area. Redirect rescue efforts.",
+    "level": "Rescue_Civilians_Surprise",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 247,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "horizontal",
+          "team_name": "Rescue Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_surprise_civilians_3": {
+    "name": "Special: Surprise Civilians (Seed 3)",
+    "description": "Extra civilians appear mid-game in a new area. Redirect rescue efforts.",
+    "level": "Rescue_Civilians_Surprise",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 389,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "horizontal",
+          "team_name": "Rescue Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_surprise_civilians_4": {
+    "name": "Special: Surprise Civilians (Seed 4)",
+    "description": "Extra civilians appear mid-game in a new area. Redirect rescue efforts.",
+    "level": "Rescue_Civilians_Surprise",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 562,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "horizontal",
+          "team_name": "Rescue Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_surprise_civilians_5": {
+    "name": "Special: Surprise Civilians (Seed 5)",
+    "description": "Extra civilians appear mid-game in a new area. Redirect rescue efforts.",
+    "level": "Rescue_Civilians_Surprise",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 710,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "horizontal",
+          "team_name": "Rescue Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+
+  "special_second_fire_1": {
+    "name": "Special: Second Fire (Seed 1)",
+    "description": "A second fire breaks out mid-game. Split resources to fight both fires.",
+    "level": "Suppress_Fire_Extinguish_Second_Fire",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 55,
+    "hierarchy": {
+      "managers": ["AGENT_9"],
+      "config": {
+        "AGENT_9": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7", "AGENT_8"],
+          "type": "vertical",
+          "team_name": "Fire Suppression"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_second_fire_2": {
+    "name": "Special: Second Fire (Seed 2)",
+    "description": "A second fire breaks out mid-game. Split resources to fight both fires.",
+    "level": "Suppress_Fire_Extinguish_Second_Fire",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 192,
+    "hierarchy": {
+      "managers": ["AGENT_9"],
+      "config": {
+        "AGENT_9": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7", "AGENT_8"],
+          "type": "vertical",
+          "team_name": "Fire Suppression"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_second_fire_3": {
+    "name": "Special: Second Fire (Seed 3)",
+    "description": "A second fire breaks out mid-game. Split resources to fight both fires.",
+    "level": "Suppress_Fire_Extinguish_Second_Fire",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 378,
+    "hierarchy": {
+      "managers": ["AGENT_9"],
+      "config": {
+        "AGENT_9": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7", "AGENT_8"],
+          "type": "vertical",
+          "team_name": "Fire Suppression"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_second_fire_4": {
+    "name": "Special: Second Fire (Seed 4)",
+    "description": "A second fire breaks out mid-game. Split resources to fight both fires.",
+    "level": "Suppress_Fire_Extinguish_Second_Fire",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 604,
+    "hierarchy": {
+      "managers": ["AGENT_9"],
+      "config": {
+        "AGENT_9": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7", "AGENT_8"],
+          "type": "vertical",
+          "team_name": "Fire Suppression"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_second_fire_5": {
+    "name": "Special: Second Fire (Seed 5)",
+    "description": "A second fire breaks out mid-game. Split resources to fight both fires.",
+    "level": "Suppress_Fire_Extinguish_Second_Fire",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 867,
+    "hierarchy": {
+      "managers": ["AGENT_9"],
+      "config": {
+        "AGENT_9": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7", "AGENT_8"],
+          "type": "vertical",
+          "team_name": "Fire Suppression"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+
+  "special_water_source_1": {
+    "name": "Special: Water Source Appears (Seed 1)",
+    "description": "Start without water. A water source appears mid-game, unlocking spray tactics.",
+    "level": "Suppress_Fire_Contain_Water_Source",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 77,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "vertical",
+          "team_name": "Containment Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_water_source_2": {
+    "name": "Special: Water Source Appears (Seed 2)",
+    "description": "Start without water. A water source appears mid-game, unlocking spray tactics.",
+    "level": "Suppress_Fire_Contain_Water_Source",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 215,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "vertical",
+          "team_name": "Containment Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_water_source_3": {
+    "name": "Special: Water Source Appears (Seed 3)",
+    "description": "Start without water. A water source appears mid-game, unlocking spray tactics.",
+    "level": "Suppress_Fire_Contain_Water_Source",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 443,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "vertical",
+          "team_name": "Containment Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_water_source_4": {
+    "name": "Special: Water Source Appears (Seed 4)",
+    "description": "Start without water. A water source appears mid-game, unlocking spray tactics.",
+    "level": "Suppress_Fire_Contain_Water_Source",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 681,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "vertical",
+          "team_name": "Containment Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+  "special_water_source_5": {
+    "name": "Special: Water Source Appears (Seed 5)",
+    "description": "Start without water. A water source appears mid-game, unlocking spray tactics.",
+    "level": "Suppress_Fire_Contain_Water_Source",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 902,
+    "hierarchy": {
+      "managers": ["AGENT_6"],
+      "config": {
+        "AGENT_6": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5"],
+          "type": "vertical",
+          "team_name": "Containment Team"
+        }
+      }
+    },
+    "difficulty": "Medium",
+    "recommended_players": 1
+  },
+
+  "special_rapid_growth_1": {
+    "name": "Special: Rapid Fire Growth (Seed 1)",
+    "description": "Fire suddenly spreads rapidly due to worsening conditions. React fast with mixed units.",
+    "level": "Suppress_Fire_Extinguish_Rapid_Growth",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 33,
+    "hierarchy": {
+      "managers": ["AGENT_8"],
+      "config": {
+        "AGENT_8": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7"],
+          "type": "vertical",
+          "team_name": "Emergency Response"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_rapid_growth_2": {
+    "name": "Special: Rapid Fire Growth (Seed 2)",
+    "description": "Fire suddenly spreads rapidly due to worsening conditions. React fast with mixed units.",
+    "level": "Suppress_Fire_Extinguish_Rapid_Growth",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 168,
+    "hierarchy": {
+      "managers": ["AGENT_8"],
+      "config": {
+        "AGENT_8": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7"],
+          "type": "vertical",
+          "team_name": "Emergency Response"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_rapid_growth_3": {
+    "name": "Special: Rapid Fire Growth (Seed 3)",
+    "description": "Fire suddenly spreads rapidly due to worsening conditions. React fast with mixed units.",
+    "level": "Suppress_Fire_Extinguish_Rapid_Growth",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 425,
+    "hierarchy": {
+      "managers": ["AGENT_8"],
+      "config": {
+        "AGENT_8": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7"],
+          "type": "vertical",
+          "team_name": "Emergency Response"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_rapid_growth_4": {
+    "name": "Special: Rapid Fire Growth (Seed 4)",
+    "description": "Fire suddenly spreads rapidly due to worsening conditions. React fast with mixed units.",
+    "level": "Suppress_Fire_Extinguish_Rapid_Growth",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 594,
+    "hierarchy": {
+      "managers": ["AGENT_8"],
+      "config": {
+        "AGENT_8": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7"],
+          "type": "vertical",
+          "team_name": "Emergency Response"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  },
+  "special_rapid_growth_5": {
+    "name": "Special: Rapid Fire Growth (Seed 5)",
+    "description": "Fire suddenly spreads rapidly due to worsening conditions. React fast with mixed units.",
+    "level": "Suppress_Fire_Extinguish_Rapid_Growth",
+    "collaboration_mode": "human_feedback",
+    "communication_mode": "team_chat",
+    "seed": 783,
+    "hierarchy": {
+      "managers": ["AGENT_8"],
+      "config": {
+        "AGENT_8": {
+          "children": ["AGENT_1", "AGENT_2", "AGENT_3", "AGENT_4", "AGENT_5", "AGENT_6", "AGENT_7"],
+          "type": "vertical",
+          "team_name": "Emergency Response"
+        }
+      }
+    },
+    "difficulty": "Hard",
+    "recommended_players": 1
+  }
+}

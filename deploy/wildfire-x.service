@@ -1,0 +1,13 @@
+[Unit]
+Description=Headless X display :0 for CREW-Wildfire (the Unity game engine renders through it)
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/X :0 -config /etc/X11/xorg.conf -nolisten tcp
+# Give X a moment to come up, then allow local processes (the containers) to use it
+ExecStartPost=/bin/sh -c 'sleep 3; DISPLAY=:0 /usr/bin/xhost +local:'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

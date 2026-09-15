@@ -1,0 +1,28 @@
+# Reverse proxy for CREW-Wildfire.
+# SITE_ADDRESS comes from the .env file next to docker-compose.yml, for example
+#   example.com, www.example.com   (HTTPS, certificates obtained automatically)
+#   http://12.34.56.78             (plain HTTP on the server's IP, no domain needed)
+{$SITE_ADDRESS} {
+    # Strip headers used by a known Next.js middleware bypass (CVE-2025-29927)
+    request_header -x-middleware-subrequest
+    request_header -x-middleware-invoke
+
+    # Block Next.js debug endpoints
+    @blocked path /__nextjs_original-stack-frames*
+    handle @blocked {
+        respond 403
+    }
+
+    # Backend API (the /api prefix is removed before forwarding)
+    handle_path /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # Nakama game server (WebSocket support included)
+    handle_path /nakama/* {
+        reverse_proxy nakama:7350
+    }
+
+    # The website
+    reverse_proxy frontend:3000
+}

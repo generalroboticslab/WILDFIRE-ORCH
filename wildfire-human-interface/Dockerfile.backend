@@ -1,0 +1,22 @@
+# Dockerfile for the FastAPI backend (lobby management)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Application code
+COPY . /app/
+ENV PYTHONPATH=/app
+
+# Run as a non-root user
+RUN addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 --ingroup appgroup appuser && \
+    chown -R appuser:appgroup /app
+USER appuser
+
+EXPOSE 8000
+
+CMD ["python", "scripts/fastapi_backend.py"]

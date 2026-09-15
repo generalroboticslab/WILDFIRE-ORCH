@@ -1,0 +1,43 @@
+# Build context for Dockerfile.algorithm is the CREW-dev root.
+# Exclude everything, then re-include only what the algorithm image needs.
+# Note: a pattern without a slash (e.g. *.md) only matches files at the root of the context.
+
+*
+
+# The Python package (only the parts the service uses)
+!crew-algorithms/
+crew-algorithms/crew_algorithms/*/
+!crew-algorithms/crew_algorithms/wildfire_alg/
+!crew-algorithms/crew_algorithms/envs/
+!crew-algorithms/crew_algorithms/utils/
+!crew-algorithms/crew_algorithms/conf/
+!crew-algorithms/crew_algorithms/__init__.py
+
+# The Unity Linux build (baked into the image)
+!crew-dojo/
+crew-dojo/*
+!crew-dojo/Builds/
+crew-dojo/Builds/*.zip
+
+# Runtime output and junk at any depth. These rules come after the re-includes, so they win.
+crew-algorithms/**/results/
+crew-algorithms/**/experiment_data/
+crew-algorithms/**/logs/
+crew-algorithms/**/past_logs/
+crew-algorithms/**/render/
+crew-algorithms/**/output/
+crew-algorithms/**/outputs/
+crew-algorithms/**/__pycache__/
+crew-algorithms/**/.pytest_cache/
+crew-algorithms/**/venv/
+crew-algorithms/**/.git/
+crew-algorithms/**/.gitignore
+crew-algorithms/**/*.pyc
+crew-algorithms/**/*.log
+crew-algorithms/**/*.mp4
+crew-algorithms/**/*.png
+crew-algorithms/**/*.jpg
+crew-algorithms/**/*.csv
+crew-algorithms/**/*.ipynb
+crew-algorithms/**/.DS_Store
+crew-algorithms/*.md

@@ -1,0 +1,46 @@
+# WILDFIRE algorithm service: runs the Unity simulation (GPU rendering) and the LLM agents,
+# and exposes the HTTP API on port 8001 that the backend talks to.
+FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+
+WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Python 3.10 plus the X11/OpenGL libraries the Unity Linux build needs to render
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    build-essential \
+    git \
+    libglu1-mesa \
+    libgl1-mesa-glx \
+    libxcursor1 \
+    libxinerama1 \
+    libxrandr2 \
+    libxi6 \
+    libx11-6 \
+    libxext6 \
+    libxkbcommon0 \
+    libasound2 \
+    libpulse0 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
+    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+# GPU rendering inside the container (the host's X server is mounted at runtime)
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility
+
+# Python dependencies (their own layer, so code changes don't reinstall them)
+COPY crew-algorithms/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --ignore-requires-python \
+      "mlagents_envs @ git+https://github.com/lingyu98/ml-agents.git@3c6692700e28332548ddf31b176d83e2953f6c01#subdirectory=ml-agents-envs"
+
+# Application code and the Unity Linux build (what gets copied is controlled by the root .dockerignore)
+COPY . /app/
+ENV PYTHONPATH=/app
+
+EXPOSE 8001
+
+CMD ["python", "crew-algorithms/crew_algorithms/wildfire_alg/algorithm_service.py"]

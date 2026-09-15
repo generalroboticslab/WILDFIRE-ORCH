@@ -1,0 +1,214 @@
+# CREW-Wildfire server stack.
+#
+# On the server this file lives in ~/wildfire next to a .env file (copy .env.example
+# to .env and fill it in). Start everything with:   docker compose up -d
+#
+# Containers start in dependency order and each one waits for the previous one to be
+# healthy: postgres -> nakama -> algorithm -> backend -> frontend -> caddy.
+# The optional "vllm" container (local language model) is only started when
+# COMPOSE_PROFILES=local-llm is set in .env.
+
+services:
+  postgres:
+    image: postgres:12.2-alpine
+    container_name: wildfire-postgres
+    command: postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+    environment:
+      - POSTGRES_DB=nakama
+      - POSTGRES_PASSWORD=localdb
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nakama"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      wildfire-net:
+        ipv4_address: 172.23.0.49
+
+  nakama:
+    image: jphyun2019/wildfire-nakama@sha256:f60bec1824258a5e66502bd7908a29424f9b45ccb731f674e2acb2694e318899
+    container_name: wildfire-nakama
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - "/bin/sh"
+      - "-ecx"
+      - >
+        /nakama/nakama migrate up --database.address postgres:localdb@postgres:5432/nakama &&
+        exec /nakama/nakama --config /nakama/data/local.yml --database.address postgres:localdb@postgres:5432/nakama
+    expose:
+      - "7349"
+      - "7350"
+      - "7351"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:7350/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      wildfire-net:
+        # The Unity game build connects to this fixed address. Do not change it.
+        ipv4_address: 172.23.0.50
+
+  algorithm:
+    image: jphyun2019/wildfire-algorithm@sha256:0ab0cb0ad63898931db77bdd1993eba2f69d4045b9d6fc6133dd68e16d0677c4
+    container_name: wildfire-algorithm
+    depends_on:
+      nakama:
+        condition: service_healthy
+    runtime: nvidia
+    environment:
+      - PYTHONPATH=/app
+      - TMPDIR=/tmp
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility
+      - DISPLAY=:0
+      # Language model settings, taken from .env (see .env.example)
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-google/gemma-4-12B-it-qat-w4a16-ct}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://vllm:8000/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+    expose:
+      - "8001"
+    volumes:
+      - ./data/results:/app/crew-algorithms/crew_algorithms/wildfire_alg/results
+      - ./data/tmp:/tmp
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+    networks:
+      wildfire-net:
+        ipv4_address: 172.23.0.100
+
+  backend:
+    image: jphyun2019/wildfire-backend@sha256:e80bf6411f9652838f526875d8addb7867b3d85a6afad37717aee5eb3e7eda55
+    container_name: wildfire-backend
+    depends_on:
+      algorithm:
+        condition: service_healthy
+    environment:
+      - PYTHONPATH=/app
+      - ALGORITHM_SERVICE_URL=http://algorithm:8001
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - wildfire-net
+
+  frontend:
+    image: jphyun2019/wildfire-frontend@sha256:61ae079abd8441151cbe7a58917d509cec6c5ca96154eca4b20ea86b459a0d87
+    container_name: wildfire-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - wildfire-net
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+      - /app/.next/cache:size=128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: wildfire-caddy
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS:?Set SITE_ADDRESS in .env to your domain (or http://YOUR-SERVER-IP)}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      nakama:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - wildfire-net
+
+  # Local language model server (only with COMPOSE_PROFILES=local-llm in .env).
+  # Serves the Hugging Face model named in LLM_MODEL through an OpenAI-compatible API.
+  # The first start downloads the model weights into ./data/huggingface.
+  vllm:
+    image: vllm/vllm-openai:v0.29.0-cu129
+    container_name: wildfire-vllm
+    profiles: ["local-llm"]
+    runtime: nvidia
+    ipc: host
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    # The image's entrypoint is "vllm serve"; the model name is its first argument.
+    command:
+      - ${LLM_MODEL:-google/gemma-4-12B-it-qat-w4a16-ct}
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --max-model-len
+      - ${VLLM_MAX_MODEL_LEN:-32768}
+      - --gpu-memory-utilization
+      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.6}
+    volumes:
+      - ./data/huggingface:/root/.cache/huggingface
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 60
+      start_period: 900s
+    restart: unless-stopped
+    networks:
+      - wildfire-net
+
+networks:
+  wildfire-net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.23.0.0/24
+          gateway: 172.23.0.1
+
+volumes:
+  caddy_data:
+  caddy_config:

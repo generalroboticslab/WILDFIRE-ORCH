@@ -1,0 +1,53 @@
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node / Next.js (wildfire-human-interface)
+node_modules/
+.next/
+*.tsbuildinfo
+npm-debug.log*
+
+# Runtime data created by docker compose on the server (database, results, model cache)
+/data/
+/Data/
+/deploy/data/
+
+# Unity project (crew-dojo/Unity): sources are tracked, generated folders are not.
+# Game builds (crew-dojo/Builds/) are local artifacts baked into the algorithm image, never committed.
+crew-dojo/Builds/
+crew-dojo/Site/
+crew-dojo/Unity/Library/
+crew-dojo/Unity/Temp/
+crew-dojo/Unity/Obj/
+crew-dojo/Unity/obj/
+crew-dojo/Unity/Logs/
+crew-dojo/Unity/UserSettings/
+crew-dojo/Unity/Build/
+crew-dojo/Unity/Recording/
+crew-dojo/Unity/.vs/
+crew-dojo/Unity/.vscode/
+crew-dojo/Unity/*.log
+crew-dojo/Unity/*.csproj
+crew-dojo/Unity/*.sln
+crew-dojo/Unity/mono_crash.*
+
+# Algorithm run outputs
+crew-algorithms/**/results/
+crew-algorithms/**/past_logs/
+crew-algorithms/**/render/
+crew-algorithms/**/experiment_data/
+crew-algorithms/**/UnityLogs/
+UnityLogs/
