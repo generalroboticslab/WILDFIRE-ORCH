@@ -1,10 +1,10 @@
 # WILDFIRE-ORCH
 
-CREW-Wildfire, a real-time wildfire simulation for human-AI teaming research, together with ORCH, the organizational multi-agent algorithm that drives its AI agents (called WILDFIRE in the code). Human players and AI agents fight fires, rescue civilians and manage resources together on a shared map, through a web interface. The AI agents are driven by a large language model: either OpenAI's API, or a model that runs on your own server (for example Gemma, served with vLLM) so that no API key is needed.
+CREW-Wildfire, a real-time wildfire simulation for human-AI teaming research, together with ORCH, the organizational multi-agent algorithm that drives its AI agents (called WILDFIRE in the code; the original ORCH paper code is at [github.com/generalroboticslab/ORCH](https://github.com/generalroboticslab/ORCH)). Human players and AI agents fight fires, rescue civilians and manage resources together on a shared map, through a web interface. The AI agents are driven by a large language model: either OpenAI's API, or a model that runs on your own server (for example Gemma, served with vLLM) so that no API key is needed.
 
 ![WILDFIRE-ORCH](assets/wildfire-teaser.png)
 
-This guide takes you from nothing to a running copy on your own Amazon Web Services (AWS) server. You do not need to write or understand code: every command can be copied and pasted as-is. Plan for about an hour the first time, most of it waiting for downloads.
+This guide takes you from nothing to a running copy on your own Amazon Web Services (AWS) server. You do not need to write or understand code: every command can be copied and pasted as-is.
 
 **Contents**
 
@@ -48,7 +48,7 @@ Everything runs on one AWS server as a set of Docker containers. A container is 
 
 | Container | What it does |
 |---|---|
-| caddy | Front door. Handles HTTPS and forwards each request to the right container. |
+| caddy | Handles HTTPS and forwards each request to the right container. |
 | frontend | The website players use. |
 | backend | Manages lobbies, collects the human players' actions and relays them to the algorithm. |
 | algorithm | Runs the game simulation (Unity, on the GPU) and the WILDFIRE AI agents. |
@@ -442,7 +442,7 @@ assets/                  images used by this README
 
 ## Citation and license
 
-CREW-Wildfire was created by [Jonathan Hyun](https://github.com/jphyun2019), [Nicholas Waytowich](https://nicholaswaytowich.com/) and [Boyuan Chen](http://boyuanchen.com/) at the Duke University [General Robotics Lab](http://generalroboticslab.com/), on top of the CREW platform by [Lingyu Zhang](https://lingyu98.github.io/), [Zhengran Ji](https://jzr01.github.io/) and Boyuan Chen ([project website](http://www.generalroboticslab.com/CREW)). The WILDFIRE algorithm that drives the AI agents is described in the ORCH paper ([arXiv:2609.11737](https://arxiv.org/abs/2609.11737)); the platform is described in the CREW paper ([arXiv:2408.00170](https://arxiv.org/abs/2408.00170)).
+CREW-Wildfire was created by [Jonathan Hyun](https://github.com/jphyun2019), [Nicholas Waytowich](https://nicholaswaytowich.com/) and [Boyuan Chen](http://boyuanchen.com/) at the Duke University [General Robotics Lab](http://generalroboticslab.com/), on top of the CREW platform by [Lingyu Zhang](https://lingyu98.github.io/), [Zhengran Ji](https://jzr01.github.io/) and Boyuan Chen ([project website](http://www.generalroboticslab.com/CREW)). The WILDFIRE algorithm that drives the AI agents is described in the ORCH paper ([arXiv:2609.11737](https://arxiv.org/abs/2609.11737), [original code](https://github.com/generalroboticslab/ORCH)); the platform is described in the CREW paper ([arXiv:2408.00170](https://arxiv.org/abs/2408.00170)).
 
 If you use this software in your research, please cite all three:
 
@@ -469,7 +469,7 @@ If you use this software in your research, please cite all three:
 
 @inproceedings{zhang2024crew,
       title={CREW: Facilitating Human-AI Teaming Research},
-      author={Zhang, Lingyu and Ji, Zhengran and Chen, Boyuan},
+      author={Lingyu Zhang and Zhengran Ji and Boyuan Chen},
       booktitle={Preprint},
       year={2024}
 }
