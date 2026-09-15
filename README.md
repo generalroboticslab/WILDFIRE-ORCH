@@ -1,6 +1,6 @@
 # WILDFIRE-ORCH
 
-CREW-Wildfire, a real-time wildfire simulation for human-AI teaming research, together with ORCH, the organizational multi-agent algorithm that drives its AI agents (called WILDFIRE in the code; the original ORCH paper code is at [github.com/generalroboticslab/ORCH](https://github.com/generalroboticslab/ORCH)). Human players and AI agents fight fires, rescue civilians and manage resources together on a shared map, through a web interface. The AI agents are driven by a large language model: either OpenAI's API, or a model that runs on your own server (for example Gemma, served with vLLM) so that no API key is needed.
+The full-stack human-AI teaming interface for CREW-Wildfire and its deployment on AWS with Docker. It takes the wildfire simulation environment ([CREW-Wildfire](https://github.com/generalroboticslab/CREW-Wildfire)) and the ORCH multi-agent algorithm that drives the AI agents ([ORCH](https://github.com/generalroboticslab/ORCH), called WILDFIRE in this code) and packages them as a website where human players and AI agents fight fires, rescue civilians and manage resources together on a shared map. This repository holds everything needed to run that on your own server: prebuilt containers, a reverse proxy with automatic HTTPS, and a choice between OpenAI's API and a self-hosted model (for example Gemma served with vLLM) so that no API key is needed. For the environment and algorithm research code, see those two repositories; use this one to deploy and play.
 
 ![WILDFIRE-ORCH](assets/wildfire-teaser.png)
 
