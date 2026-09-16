@@ -1,237 +1,180 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { Loader2, Shuffle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Users, ArrowLeft, ArrowRight, Flame, Truck, Zap, Plane, Loader2, Shuffle } from "lucide-react"
-import HierarchyBuilder, { ManagerConfig } from "@/components/hierarchy-builder"
+import ApiKeyField from "@/components/ApiKeyField"
+import TeamBuilder, { compositionText, createRootTeam, validateTeam, type TeamState } from "@/components/TeamBuilder"
+import { useApiKey } from "@/hooks/use-api-key"
 import { API_BASE_URL } from "@/lib/constants"
+import { AGENT_TYPES, WORKER_TYPE_ORDER, countOfType, displayName, workerNames, type LevelAgents } from "@/lib/agents"
+import { cn } from "@/lib/utils"
 
-const COLLABORATION_MODES = {
-  human_control: {
-    name: "Human Control",
-    description: "Humans directly control agent actions",
-  },
-  human_feedback: {
-    name: "Human Feedback", 
-    description: "AI controls agents but receives human feedback and guidance",
-  },
+const COLLABORATION_MODES = [
+  { value: "human_feedback", name: "Human feedback", description: "The AI runs the team. You guide it in chat." },
+  { value: "human_control", name: "Human control", description: "You choose your agent's actions each step." },
+] as const
+
+// Levels with scripted mid-game events
+const SPECIAL_LEVEL_KEYS = new Set([
+  "Scout_Fire_Drone_Lost",
+  "Transport_Helicopter_Down",
+  "Rescue_Civilians_Surprise",
+  "Suppress_Fire_Extinguish_Second_Fire",
+  "Suppress_Fire_Contain_Water_Source",
+  "Suppress_Fire_Extinguish_Rapid_Growth",
+])
+
+const CATEGORY_ORDER = [
+  { prefix: "Demo", name: "Demo" },
+  { prefix: "Cut_Trees", name: "Cut trees" },
+  { prefix: "Scout_Fire", name: "Scout fire" },
+  { prefix: "Transport_Firefighters", name: "Transport firefighters" },
+  { prefix: "Rescue_Civilians", name: "Rescue civilians" },
+  { prefix: "Suppress_Fire", name: "Suppress fire" },
+  { prefix: "Scale_Level", name: "Scale" },
+  { prefix: "Full_Game", name: "Full game" },
+  { prefix: "VLM", name: "VLM" },
+]
+
+interface LevelInfo {
+  name?: string
+  description?: string
+  map_size?: number
+  max_steps?: number
+  agents?: LevelAgents
 }
 
 interface CreateLobbyDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   playerName: string
-  apiKey: string
   // False when the server runs a local model or has its own OpenAI key configured
   requiresApiKey?: boolean
   onSuccess: (lobbyId: string) => void
 }
 
-export default function CreateLobbyDialog({ open, onOpenChange, playerName, apiKey, requiresApiKey = true, onSuccess }: CreateLobbyDialogProps) {
-  const [step, setStep] = useState(1) // 1: Level Selection, 2: Collaboration Mode, 3: Hierarchy Building
+function groupLevels(levels: Record<string, LevelInfo>): { name: string; keys: string[] }[] {
+  const groups: Record<string, string[]> = {}
+  const special: string[] = []
+  for (const key of Object.keys(levels)) {
+    if (SPECIAL_LEVEL_KEYS.has(key)) {
+      special.push(key)
+      continue
+    }
+    const category = CATEGORY_ORDER.find((c) => key.startsWith(c.prefix))?.name || "Other"
+    ;(groups[category] ||= []).push(key)
+  }
+  const ordered = CATEGORY_ORDER.filter((c) => groups[c.name]?.length).map((c) => ({ name: c.name, keys: groups[c.name] }))
+  if (special.length) ordered.push({ name: "Special events", keys: special })
+  if (groups["Other"]?.length) ordered.push({ name: "Other", keys: groups["Other"] })
+  return ordered
+}
+
+function difficultyOf(level?: LevelInfo): "Easy" | "Medium" | "Hard" {
+  const total = level?.agents ? Object.values(level.agents).reduce((s, n) => s + (n || 0), 0) : 0
+  const complexity = total + (level?.map_size || 50) / 50 + (level?.max_steps || 30) / 30
+  return complexity <= 6 ? "Easy" : complexity <= 12 ? "Medium" : "Hard"
+}
+
+function Composition({ agents }: { agents?: LevelAgents }) {
+  if (!agents) return null
+  return (
+    <div className="flex items-center gap-2.5">
+      {WORKER_TYPE_ORDER.map((type) => {
+        const meta = AGENT_TYPES[type]
+        const n = countOfType(agents, type)
+        if (!n) return null
+        const Icon = meta.icon
+        return (
+          <span key={type} className="inline-flex items-center gap-1 text-xs text-stone-700" title={`${n} ${meta.plural}`}>
+            <Icon className={cn("h-[13px] w-[13px]", meta.text)} />
+            {n}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function CreateLobbyDialog({ open, onOpenChange, playerName, requiresApiKey = true, onSuccess }: CreateLobbyDialogProps) {
+  const [step, setStep] = useState<1 | 2>(1)
+  const [levels, setLevels] = useState<Record<string, LevelInfo>>({})
   const [selectedLevel, setSelectedLevel] = useState("")
-  const [seed, setSeed] = useState<string>("")
-  const [collaborationMode, setCollaborationMode] = useState("human_feedback")
-  const [communicationMode, setCommunicationMode] = useState("team_chat")
-  const [hierarchy, setHierarchy] = useState<Record<string, string[]>>({})
-  const [managers, setManagers] = useState<string[]>([])
-  const [managerConfigs, setManagerConfigs] = useState<Record<string, ManagerConfig>>({})
-  const [creatingLobby, setCreatingLobby] = useState(false)
-  const [lobbyCreated, setLobbyCreated] = useState(false)
-  const [levels, setLevels] = useState<any>({})
-  const [levelKeys, setLevelKeys] = useState<string[]>([])
+  const [seed, setSeed] = useState("")
+  const [collaborationMode, setCollaborationMode] = useState<string>("human_feedback")
+  const [team, setTeam] = useState<TeamState>({ managers: [], hierarchy: {}, managerConfigs: {} })
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [apiKey, setApiKey] = useApiKey()
 
-  // Fetch levels from backend
   useEffect(() => {
-    async function fetchLevels() {
-      try {
-        const url = `${API_BASE_URL}/levels`
-        console.log("Fetching levels from:", url)
-        const res = await fetch(url)
-        console.log("Response status:", res.status)
-        const data = await res.json()
-        console.log("Levels data:", data)
-        if (data.levels) {
-          setLevels(data.levels)
-          setLevelKeys(Object.keys(data.levels))
-          console.log("Set levels:", Object.keys(data.levels))
-        } else {
-          console.log("No levels found in response")
-        }
-      } catch (e) {
-        console.error("Error fetching levels:", e)
-        setLevels({})
-        setLevelKeys([])
-      }
-    }
-    fetchLevels()
-  }, [])
-
-  const currentLevel = selectedLevel ? levels[selectedLevel] : null
-
-  const generateAgentNames = (levelKey: string) => {
-    const level = levels[levelKey]
-    if (!level || !level.agents) return []
-    
-    // Follow algorithm order: firefighters, bulldozers, drones, helicopters
-    const agentOrder = ["firefighters", "bulldozers", "drones", "helicopters"]
-    const agentNames: string[] = []
-    let agentId = 1
-    
-    for (const agentType of agentOrder) {
-      const count = level.agents[agentType] || 0
-      for (let i = 0; i < count; i++) {
-        agentNames.push(`AGENT_${agentId}`)
-        agentId++
-      }
-    }
-    
-    return agentNames
-  }
-
-  const getDifficulty = (level: any) => {
-    if (!level || !level.agents) return "Easy"
-    const totalAgents = Object.values(level.agents).reduce((sum: number, count: any) => sum + count, 0)
-    const mapSize = level.map_size || 50
-    const maxSteps = level.max_steps || 30
-    
-    // Calculate difficulty based on total agents, map size, and complexity
-    const complexity = totalAgents + (mapSize / 50) + (maxSteps / 30)
-    
-    if (complexity <= 6) return "Easy"
-    if (complexity <= 12) return "Medium"
-    return "Hard"
-  }
-
-  const getAgentIcon = (type: string) => {
-    switch (type) {
-      case "firefighters": return <Flame className="h-4 w-4" />
-      case "bulldozers": return <Truck className="h-4 w-4" />
-      case "drones": return <Zap className="h-4 w-4" />
-      case "helicopters": return <Plane className="h-4 w-4" />
-      default: return <Users className="h-4 w-4" />
-    }
-  }
-
-  // Special levels with dynamic mid-game events (scheduled_events)
-  const SPECIAL_LEVEL_KEYS = new Set([
-    "Scout_Fire_Drone_Lost",
-    "Transport_Helicopter_Down",
-    "Rescue_Civilians_Surprise",
-    "Suppress_Fire_Extinguish_Second_Fire",
-    "Suppress_Fire_Contain_Water_Source",
-    "Suppress_Fire_Extinguish_Rapid_Growth",
-  ])
-
-  const groupLevelsByCategory = (keys: string[]) => {
-    const categoryOrder = [
-      { prefix: "Demo", name: "Demo Levels" },
-      { prefix: "Cut_Trees", name: "Cut Trees" },
-      { prefix: "Scout_Fire", name: "Scout Fire" },
-      { prefix: "Transport_Firefighters", name: "Transport Firefighters" },
-      { prefix: "Rescue_Civilians", name: "Rescue Civilians" },
-      { prefix: "Suppress_Fire", name: "Suppress Fire" },
-      { prefix: "Scale_Level", name: "Scale Levels" },
-      { prefix: "Full_Game", name: "Full Game" },
-      { prefix: "VLM", name: "VLM Levels" },
-    ]
-
-    const categories: Record<string, string[]> = {}
-    const specialLevels: string[] = []
-
-    keys.forEach(key => {
-      // Special levels go into their own category
-      if (SPECIAL_LEVEL_KEYS.has(key)) {
-        specialLevels.push(key)
-        return
-      }
-      const category = categoryOrder.find(c => key.startsWith(c.prefix))
-      const categoryName = category?.name || "Other"
-      if (!categories[categoryName]) categories[categoryName] = []
-      categories[categoryName].push(key)
-    })
-
-    // Return in order defined by categoryOrder
-    const orderedCategories: { name: string; levels: string[] }[] = []
-    categoryOrder.forEach(c => {
-      if (categories[c.name] && categories[c.name].length > 0) {
-        orderedCategories.push({ name: c.name, levels: categories[c.name] })
-      }
-    })
-    // Add Special Levels category
-    if (specialLevels.length > 0) {
-      orderedCategories.push({ name: "Special Levels (Dynamic Events)", levels: specialLevels })
-    }
-    // Add "Other" at the end if it exists
-    if (categories["Other"] && categories["Other"].length > 0) {
-      orderedCategories.push({ name: "Other", levels: categories["Other"] })
-    }
-
-    return orderedCategories
-  }
-
-  const handleLevelSelect = (levelKey: string) => {
-    setSelectedLevel(levelKey)
-    // Reset hierarchy, managers, and configs
-    setManagers([])
-    setHierarchy({})
-    setManagerConfigs({})
-    // Initialize hierarchy with agents having no parents
-    const agents = generateAgentNames(levelKey)
-    const initialHierarchy: Record<string, string[]> = {}
-    agents.forEach((agent) => {
-      initialHierarchy[agent] = []
-    })
-    setHierarchy(initialHierarchy)
-  }
-
-  const handleCreateLobby = async () => {
-    if (!selectedLevel || !playerName || !collaborationMode || managers.length === 0) {
-      alert("Please complete all steps before creating the lobby")
-      return
-    }
-    if (requiresApiKey && !apiKey) {
-      alert("Please enter your OpenAI API key on the home page before creating a lobby")
-      return
-    }
-
-    try {
-      setCreatingLobby(true)
-
-      // Generate a random lobby ID
-      const newLobbyId = Math.random().toString(36).substring(2, 8).toUpperCase()
-
-      const agents = generateAgentNames(selectedLevel)
-
-      // Transform hierarchy to new format with children, type, team_name
-      const transformedHierarchy: Record<string, { children: string[]; type: string; team_name: string }> = {}
-      for (const manager of managers) {
-        const config = managerConfigs[manager] || { type: "vertical", team_name: `Team ${manager}` }
-        transformedHierarchy[manager] = {
-          children: hierarchy[manager] || [],
-          type: config.type,
-          team_name: config.team_name
-        }
-      }
-
-      // Debug: Log what we're sending to backend
-      console.log("[CREATE LOBBY DEBUG] Sending to backend:", {
-        lobby_id: newLobbyId,
-        level: selectedLevel,
-        seed: seed ? parseInt(seed) : null,
-        agents: agents,
-        managers: managers,
-        hierarchy: transformedHierarchy,
-        communication_mode: communicationMode,
+    if (!open) return
+    let cancelled = false
+    fetch(`${API_BASE_URL}/levels`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setLevels(data.levels || {})
       })
+      .catch(() => {
+        if (!cancelled) setError("Could not load the levels. Check that the server is running.")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
-      // Create the lobby
+  const level = selectedLevel ? levels[selectedLevel] : undefined
+  const levelAgents: LevelAgents = level?.agents || { firefighters: 0, bulldozers: 0, drones: 0, helicopters: 0 }
+  const agents = useMemo(() => workerNames(level?.agents), [level])
+  const groups = useMemo(() => groupLevels(levels), [levels])
+  const validation = validateTeam(agents, team)
+
+  const reset = () => {
+    setStep(1)
+    setSelectedLevel("")
+    setSeed("")
+    setCollaborationMode("human_feedback")
+    setTeam({ managers: [], hierarchy: {}, managerConfigs: {} })
+    setCreating(false)
+    setError(null)
+  }
+
+  const handleClose = (o: boolean) => {
+    if (creating) return
+    onOpenChange(o)
+    if (!o) reset()
+  }
+
+  const selectLevel = (key: string) => {
+    setSelectedLevel(key)
+    setTeam({ managers: [], hierarchy: {}, managerConfigs: {} })
+  }
+
+  const goToTeam = () => {
+    // The root manager is created for you; every other manager goes under it.
+    if (team.managers.length === 0) setTeam(createRootTeam(agents))
+    setError(null)
+    setStep(2)
+  }
+
+  const handleCreate = async () => {
+    if (!selectedLevel || !playerName || !validation.ok) return
+    if (requiresApiKey && !apiKey) {
+      setError("Enter your OpenAI API key on the previous step.")
+      return
+    }
+    setCreating(true)
+    setError(null)
+    try {
+      const newLobbyId = Math.random().toString(36).substring(2, 8).toUpperCase()
+      const hierarchy: Record<string, { children: string[]; type: string; team_name: string }> = {}
+      for (const manager of team.managers) {
+        const config = team.managerConfigs[manager] || { type: "vertical", team_name: `Team ${manager}` }
+        hierarchy[manager] = { children: team.hierarchy[manager] || [], type: config.type, team_name: config.team_name }
+      }
       const response = await fetch(`${API_BASE_URL}/create_lobby`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -239,353 +182,210 @@ export default function CreateLobbyDialog({ open, onOpenChange, playerName, apiK
           lobby_id: newLobbyId,
           creator_name: playerName,
           level: selectedLevel,
-          seed: seed ? parseInt(seed) : null,
-          roles: {
-            agents: agents,
-            managers: managers,
-          },
-          hierarchy: transformedHierarchy,
-          communication_mode: communicationMode,
+          seed: seed ? parseInt(seed, 10) : null,
+          roles: { agents, managers: team.managers },
+          hierarchy,
+          communication_mode: "team_chat",
           collaboration_mode: collaborationMode,
-          // Only sent when the creator supplied one; the server may not need it at all
-          ...(apiKey ? { openai_api_key: apiKey } : {}),
+          // Only sent when the server asks for one (a stale saved key must not be validated otherwise)
+          ...(requiresApiKey && apiKey ? { openai_api_key: apiKey } : {}),
         }),
       })
-
       if (!response.ok) {
-        let detail = "Failed to create lobby"
+        let detail = "Could not create the lobby."
         try {
           const errorData = await response.json()
           if (errorData?.detail) detail = errorData.detail
         } catch {
-          // Non-JSON error response — keep the generic message
+          // Non-JSON error response: keep the generic message
         }
         throw new Error(detail)
       }
-
-      // Show loading screen while environment is being prepared
-      setLobbyCreated(true)
-      
-      // Simulate environment preparation time (3 seconds)
-      setTimeout(() => {
-        onSuccess(newLobbyId)
-        
-        // Reset form
-        setStep(1)
-        setSelectedLevel("")
-        setSeed("")
-        setCollaborationMode("human_feedback")
-        setCommunicationMode("team_chat")
-        setHierarchy({})
-        setManagers([])
-        setManagerConfigs({})
-        setLobbyCreated(false)
-      }, 3000)
-    } catch (error) {
-      console.error("Error creating lobby:", error)
-      alert(error instanceof Error ? error.message : "Failed to create lobby. Please try again.")
-    } finally {
-      setCreatingLobby(false)
+      onSuccess(newLobbyId)
+      reset()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create the lobby.")
+      setCreating(false)
     }
   }
 
-  const canProceedToStep2 = selectedLevel !== ""
-  const canProceedToStep3 = collaborationMode !== ""
-  const canCreateLobby = managers.length > 0 && Object.keys(hierarchy).length > 0
-
-  const handleClose = () => {
-    onOpenChange(false)
-    // Reset form when closing
-    setStep(1)
-    setSelectedLevel("")
-    setSeed("")
-    setCollaborationMode("human_feedback")
-    setCommunicationMode("team_chat")
-    setHierarchy({})
-    setManagers([])
-    setManagerConfigs({})
-    setLobbyCreated(false)
+  const statusLine = () => {
+    if (validation.unassigned.length > 0) {
+      const n = validation.unassigned.length
+      return { color: "bg-amber-500", text: `${n} agent${n === 1 ? "" : "s"} still unassigned` }
+    }
+    if (validation.emptyManagers.length > 0) {
+      const names = validation.emptyManagers.map((m) => displayName(m, -1)).join(", ")
+      return { color: "bg-amber-500", text: `${names} ${validation.emptyManagers.length === 1 ? "has" : "have"} no members` }
+    }
+    return { color: "bg-green-500", text: "Everyone is on the team" }
   }
+  const status = statusLine()
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="flex max-h-[92vh] max-w-[1000px] flex-col gap-4 overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="text-2xl text-center">Create Game Lobby</DialogTitle>
-
-          {/* Progress Indicator */}
-          <div className="flex justify-center space-x-4 mt-4">
-            {[1, 2, 3].map((stepNum) => (
-              <div key={stepNum} className="flex items-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step >= stepNum ? "bg-primary text-primary-foreground" : "bg-gray-200 text-gray-600"
-                  }`}
-                >
-                  {stepNum}
-                </div>
-                {stepNum < 3 && <div className={`w-12 h-0.5 mx-2 ${step > stepNum ? "bg-primary" : "bg-gray-200"}`} />}
-              </div>
-            ))}
-          </div>
-
-          <div className="text-center text-sm text-gray-600 mt-2">
-            {step === 1 && "Level Selection"}
-            {step === 2 && "Collaboration Mode"}
-            {step === 3 && "Hierarchy Building"}
+          <div className="flex items-baseline justify-between gap-3 pr-6">
+            <DialogTitle className="text-lg font-semibold">Custom setup</DialogTitle>
+            <span className="text-[13px] text-muted-foreground">Step {step} of 2 · {step === 1 ? "Level and mode" : "Team"}</span>
           </div>
         </DialogHeader>
 
-        <div className="space-y-6 mt-6">
-          {/* Loading Screen */}
-          {lobbyCreated && (
-            <div className="flex flex-col items-center justify-center py-12 space-y-6">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <div className="text-center space-y-2">
-                <h3 className="text-lg font-semibold">Preparing Game Environment</h3>
-                <p className="text-sm text-gray-600">Setting up the wildfire simulation...</p>
-              </div>
-              <div className="bg-blue-50 p-4 rounded-lg max-w-md">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">Level: {currentLevel?.name || selectedLevel}</span>
-                  <Badge>
-                    {currentLevel?.agents 
-                      ? Object.values(currentLevel.agents).reduce((sum: number, count: any) => sum + count, 0)
-                      : "N/A"} Agents
-                  </Badge>
-                </div>
-                <p className="text-sm text-gray-600">{currentLevel?.description || "No description available"}</p>
-              </div>
-            </div>
-          )}
+        {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
-          {/* Step 1: Level Selection */}
-          {!lobbyCreated && step === 1 && (
-            <div className="space-y-4">
-              <div className="text-center">
-                <h3 className="text-lg font-semibold mb-2">Choose Game Level</h3>
-                <p className="text-sm text-gray-600">Select a category to view available levels</p>
-              </div>
-
-              <Accordion type="single" collapsible className="w-full">
-                {groupLevelsByCategory(levelKeys).map((category) => (
-                  <AccordionItem key={category.name} value={category.name}>
-                    <AccordionTrigger className="text-left">
-                      <div className="flex items-center justify-between w-full pr-4">
-                        <span className="font-medium">{category.name}</span>
-                        <Badge variant="outline">{category.levels.length} levels</Badge>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                        {category.levels.map((levelKey) => {
-                          const level = levels[levelKey]
-                          const difficulty = getDifficulty(level)
-                          const totalAgents = level?.agents
-                            ? Object.values(level.agents).reduce((sum: number, count: any) => sum + count, 0)
-                            : 0
-
-                          return (
-                            <div
-                              key={levelKey}
-                              className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-sm ${
-                                selectedLevel === levelKey ? "ring-2 ring-primary bg-primary/5" : "hover:bg-gray-50"
-                              }`}
-                              onClick={() => handleLevelSelect(levelKey)}
-                            >
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="font-medium text-sm">{level?.name || levelKey}</span>
-                                <Badge
-                                  variant={difficulty === "Easy" ? "secondary" : difficulty === "Medium" ? "default" : "destructive"}
-                                  className="text-xs"
-                                >
-                                  {difficulty}
-                                </Badge>
-                              </div>
-                              <div className="flex items-center justify-between text-xs text-gray-500">
-                                <span className="flex items-center">
-                                  <Users className="h-3 w-3 mr-1" />
-                                  {totalAgents} agents
-                                </span>
-                                <span>{level?.map_size}x{level?.map_size} • {level?.max_steps} steps</span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-
-              {/* Selected Level Info */}
-              {selectedLevel && currentLevel && (
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-medium">{currentLevel.name || selectedLevel}</span>
-                    <Badge>
-                      {currentLevel.agents
-                        ? Object.values(currentLevel.agents).reduce((sum: number, count: any) => sum + count, 0)
-                        : "N/A"} Agents
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">{currentLevel.description || "No description"}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {currentLevel.agents && Object.entries(currentLevel.agents).map(([type, count]) => (
-                      count > 0 && (
-                        <div key={type} className="flex items-center text-sm">
-                          {getAgentIcon(type)}
-                          <span className="ml-1 capitalize">{type}: {count}</span>
-                        </div>
-                      )
-                    ))}
-                  </div>
+        {step === 1 && (
+          <div className="grid min-h-0 gap-5 md:grid-cols-[380px_minmax(0,1fr)]">
+            {/* Level list */}
+            <div className="max-h-[560px] overflow-y-auto rounded-lg border p-1.5">
+              {groups.length === 0 && (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading levels
                 </div>
               )}
+              {groups.map((group) => (
+                <div key={group.name} className="flex flex-col gap-0.5">
+                  <div className="px-2.5 pb-0.5 pt-2 text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">{group.name}</div>
+                  {group.keys.map((key) => {
+                    const info = levels[key]
+                    const active = key === selectedLevel
+                    const diff = difficultyOf(info)
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => selectLevel(key)}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left transition-colors",
+                          active ? "border-brand bg-brand-soft" : "border-transparent hover:bg-muted",
+                        )}
+                      >
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate text-[13px] font-medium leading-[18px]">{info?.name || key}</span>
+                          <span className="text-[11px] leading-[14px] text-muted-foreground">
+                            {compositionText(info?.agents)} · {info?.map_size}×{info?.map_size} · {info?.max_steps} steps
+                          </span>
+                        </span>
+                        <span
+                          title={diff}
+                          className={cn("h-2 w-2 flex-shrink-0 rounded-full", diff === "Easy" ? "bg-green-500" : diff === "Medium" ? "bg-amber-500" : "bg-red-600")}
+                        />
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
 
-              {/* Seed Input */}
-              <div className="mt-4 space-y-2">
-                <label className="text-sm font-medium">Seed (optional)</label>
-                <div className="flex items-center space-x-2">
+            {/* Details, seed, mode, key */}
+            <div className="flex min-w-0 flex-col gap-4">
+              <div className="flex flex-col gap-2 rounded-lg border bg-background px-4 py-3.5">
+                {level ? (
+                  <>
+                    <div className="text-base font-semibold leading-[22px]">{level.name || selectedLevel}</div>
+                    <div className="text-[13px] leading-[18px] text-stone-700">{level.description || "No description."}</div>
+                    <div className="mt-0.5 flex items-center gap-3.5">
+                      <Composition agents={level.agents} />
+                      <span className="text-xs text-muted-foreground">
+                        {level.map_size}×{level.map_size} map · {level.max_steps} steps
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="py-2 text-[13px] text-muted-foreground">Pick a level on the left.</div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor="seed" className="text-sm font-medium">
+                  Seed
+                </label>
+                <div className="flex gap-2">
                   <Input
+                    id="seed"
                     type="number"
-                    placeholder="Leave empty for random seed"
+                    placeholder="Random"
+                    className="font-mono"
                     value={seed}
                     onChange={(e) => setSeed(e.target.value)}
-                    className="flex-1"
                   />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSeed(Math.floor(Math.random() * 10000).toString())}
-                  >
-                    <Shuffle className="h-4 w-4 mr-1" />
-                    Random
+                  <Button type="button" variant="outline" onClick={() => setSeed(Math.floor(Math.random() * 10000).toString())}>
+                    <Shuffle className="h-4 w-4" /> Random
                   </Button>
                 </div>
-                <p className="text-xs text-gray-500">
-                  Using the same seed will generate the same map layout
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Collaboration Mode */}
-          {!lobbyCreated && step === 2 && (
-            <div className="space-y-4">
-              <div className="text-center">
-                <h3 className="text-lg font-semibold mb-2">Collaboration Mode</h3>
-                <p className="text-sm text-gray-600">Choose how humans and AI will work together</p>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Collaboration Mode</label>
-                <Select value={collaborationMode} onValueChange={setCollaborationMode}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(COLLABORATION_MODES).map(([key, mode]) => (
-                      <SelectItem key={key} value={key}>
-                        <div>
-                          <div className="font-medium">{mode.name}</div>
-                          <div className="text-xs text-gray-500">{mode.description}</div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {currentLevel && (
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">Selected Level: {currentLevel.name || selectedLevel}</span>
-                    <Badge>
-                      {currentLevel.agents 
-                        ? Object.values(currentLevel.agents).reduce((sum: number, count: any) => sum + count, 0)
-                        : "N/A"} Agents
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-600">{currentLevel.description || "No description available"}</p>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Collaboration mode</span>
+                <div className="flex gap-2.5">
+                  {COLLABORATION_MODES.map((mode) => {
+                    const active = collaborationMode === mode.value
+                    return (
+                      <button
+                        key={mode.value}
+                        type="button"
+                        onClick={() => setCollaborationMode(mode.value)}
+                        className={cn(
+                          "flex flex-1 gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                          active ? "border-brand bg-brand-soft" : "hover:bg-muted",
+                        )}
+                      >
+                        <span
+                          className={cn("mt-0.5 h-4 w-4 flex-shrink-0 rounded-full border", active ? "border-[5px] border-brand" : "border-stone-400")}
+                        />
+                        <span className="flex flex-col gap-0.5">
+                          <span className="text-[13px] font-semibold leading-[18px]">{mode.name}</span>
+                          <span className="text-xs leading-4 text-muted-foreground">{mode.description}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 3: Hierarchy Building */}
-          {!lobbyCreated && step === 3 && currentLevel && (
-            <div className="space-y-4">
-              <div className="text-center">
-                <h3 className="text-lg font-semibold mb-2">Build Command Hierarchy</h3>
-                <p className="text-sm text-gray-600">
-                  Create managers and assign agents/managers as their subordinates
-                </p>
               </div>
 
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">Level: {currentLevel.name || selectedLevel}</span>
-                  <Badge>
-                    {currentLevel.agents
-                      ? Object.values(currentLevel.agents).reduce((sum: number, count: any) => sum + count, 0)
-                      : "N/A"} Agents
-                  </Badge>
-                </div>
-                <p className="text-sm text-gray-600">{currentLevel.description || "No description available"}</p>
-              </div>
-
-              <HierarchyBuilder
-                agents={generateAgentNames(selectedLevel)}
-                managers={managers}
-                hierarchy={hierarchy}
-                managerConfigs={managerConfigs}
-                levelAgents={currentLevel?.agents || { firefighters: 0, bulldozers: 0, drones: 0, helicopters: 0 }}
-                onManagersChange={setManagers}
-                onHierarchyChange={setHierarchy}
-                onManagerConfigsChange={setManagerConfigs}
-              />
-            </div>
-          )}
-        </div>
-
-        {!lobbyCreated && (
-          <div className="flex justify-between mt-6 pt-4 border-t">
-            <Button
-              variant="outline"
-              onClick={() => setStep(Math.max(1, step - 1))}
-              disabled={step === 1}
-              className="flex items-center space-x-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span>Previous</span>
-            </Button>
-
-            <div className="flex space-x-2">
-              {step < 3 ? (
-                <Button
-                  onClick={() => setStep(step + 1)}
-                  disabled={(step === 1 && !canProceedToStep2) || (step === 2 && !canProceedToStep3)}
-                  className="flex items-center space-x-2"
-                >
-                  <span>Next</span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button onClick={handleCreateLobby} disabled={!canCreateLobby || creatingLobby}>
-                  {creatingLobby ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create Lobby"
-                  )}
-                </Button>
-              )}
+              {requiresApiKey && <ApiKeyField value={apiKey} onChange={setApiKey} />}
             </div>
           </div>
         )}
+
+        {step === 2 && (
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              {level?.name || selectedLevel} · {COLLABORATION_MODES.find((m) => m.value === collaborationMode)?.name} ·{" "}
+              <Composition agents={level?.agents} />
+            </div>
+            <TeamBuilder agents={agents} levelAgents={levelAgents} team={team} onChange={setTeam} />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-3 border-t pt-4">
+          {step === 1 ? (
+            <>
+              <Button type="button" variant="ghost" onClick={() => handleClose(false)}>
+                Cancel
+              </Button>
+              <Button type="button" disabled={!selectedLevel} onClick={goToTeam}>
+                Next: Team
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-4">
+                <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={creating}>
+                  Back
+                </Button>
+                <span className="inline-flex items-center gap-1.5 text-xs text-stone-700">
+                  <span className={cn("h-2 w-2 rounded-full", status.color)} />
+                  {status.text}
+                </span>
+              </div>
+              <Button type="button" disabled={!validation.ok || creating} onClick={handleCreate}>
+                {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                Create lobby
+              </Button>
+            </>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   )

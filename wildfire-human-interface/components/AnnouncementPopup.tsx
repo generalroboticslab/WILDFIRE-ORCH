@@ -2,13 +2,7 @@
 
 import { useEffect } from "react"
 import { AlertTriangle } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
 interface AnnouncementPopupProps {
   announcement: string | null
@@ -25,15 +19,15 @@ export function AnnouncementPopup({ announcement, onDismiss }: AnnouncementPopup
 
   return (
     <Dialog open={!!announcement} onOpenChange={(open) => { if (!open) onDismiss() }}>
-      <DialogContent className="border-2 border-orange-500 bg-orange-950/95 text-orange-50 max-w-md">
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-orange-300">
-            <AlertTriangle className="h-5 w-5 text-orange-400" />
-            Game Event
+          <DialogTitle className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+            </span>
+            Game event
           </DialogTitle>
-          <DialogDescription className="text-orange-100 text-base pt-2">
-            {announcement}
-          </DialogDescription>
+          <DialogDescription className="pt-2 text-base text-stone-700">{announcement}</DialogDescription>
         </DialogHeader>
       </DialogContent>
     </Dialog>

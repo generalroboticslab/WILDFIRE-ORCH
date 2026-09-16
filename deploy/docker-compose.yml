@@ -93,7 +93,7 @@ services:
         ipv4_address: 172.23.0.100
 
   backend:
-    image: jphyun2019/wildfire-backend@sha256:e80bf6411f9652838f526875d8addb7867b3d85a6afad37717aee5eb3e7eda55
+    image: jphyun2019/wildfire-backend@sha256:ecfbc565419fd7b2aaca255c414f1cb6d1b69947dd2aeb7933e082e39e8623c7
     container_name: wildfire-backend
     depends_on:
       algorithm:
@@ -114,7 +114,7 @@ services:
       - wildfire-net
 
   frontend:
-    image: jphyun2019/wildfire-frontend@sha256:61ae079abd8441151cbe7a58917d509cec6c5ca96154eca4b20ea86b459a0d87
+    image: jphyun2019/wildfire-frontend@sha256:de625e061425d3b43f7ab57c6734fc03a8ad63f1b03cc005a4a2819754803b9b
     container_name: wildfire-frontend
     depends_on:
       backend:

@@ -12,7 +12,7 @@ This guide takes you from nothing to a running copy on your own Amazon Web Servi
 
 **Contents**
 
-1. [How it fits together](#how-it-fits-together)
+1. [Architecture Overview](#architecture-overview)
 2. [What you need](#what-you-need)
 3. [Step 1: Create the server on AWS](#step-1-create-the-server-on-aws)
 4. [Step 2: Set up the server (once)](#step-2-set-up-the-server-once)
@@ -27,7 +27,7 @@ This guide takes you from nothing to a running copy on your own Amazon Web Servi
 13. [Repository layout](#repository-layout)
 14. [Citation and license](#citation-and-license)
 
-## How it fits together
+## Architecture Overview
 
 Everything runs on one AWS server as a set of Docker containers. A container is a ready-made, self-contained package: nothing needs to be installed by hand inside it.
 
@@ -252,12 +252,12 @@ Now open the site in a browser: `https://your-domain.com`, or `http://<server ad
 
 To play a first game:
 
-1. Enter your name. In OpenAI mode without a server-side key, also paste your OpenAI API key (it is stored only in your browser).
-2. Click **Quickstart** and pick a scenario. A lobby is created and you are taken to it.
-3. Click a role in the team tree to claim it. Other people can join the same lobby from their own browsers by entering your lobby ID on the home page and claiming other roles; unclaimed roles are played by the AI.
+1. Enter your name.
+2. Click **Quickstart** and press **Start** on a scenario. In OpenAI mode without a server-side key, the dialog asks for your OpenAI API key first (it is stored only in your browser). A lobby is created and you are taken to it.
+3. Click a tile in the team chart to claim your role (agents are named by type and number, e.g. "Drone 12"). Other people can join the same lobby from their own browsers by entering your lobby code (the **Copy** button next to it) on the home page and claiming other roles; unclaimed roles are played by the AI.
 4. Click **Start Game**. The game view shows your agent's map and the team, and lets you send actions and chat with the AI agents.
 
-**Create New Lobby** instead of Quickstart lets you pick the level, the seed and the team structure yourself.
+**Custom setup** instead of Quickstart lets you pick the level, the seed and the collaboration mode, then build the team by dragging agents onto managers.
 
 ## Everyday use
 
@@ -404,7 +404,7 @@ Alternatively, to run AI-only experiments locally, look to ([ORCH](https://githu
 
 **"The local language model is still loading".** Normal for the first ten minutes after a start. `docker compose logs -f vllm` shows progress. If it never finishes: check `HF_TOKEN`, accept the model licence on Hugging Face, and check `nvidia-smi` shows enough free memory.
 
-**"No OpenAI API key provided".** In OpenAI mode either put a key in `.env` (`OPENAI_API_KEY`) or enter one on the home page before creating a lobby.
+**"No OpenAI API key provided".** In OpenAI mode either put a key in `.env` (`OPENAI_API_KEY`) or enter one in the Quickstart or Custom setup dialog when creating a game.
 
 **Games start but the map images are missing, or the algorithm log says the display cannot be opened.** The display server is not running: `sudo systemctl status wildfire-x`, then `sudo systemctl restart wildfire-x` and `docker compose restart algorithm`.
 

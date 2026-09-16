@@ -1,23 +1,32 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Segmented } from "@/components/ui/segmented"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Send, Clock, MessageSquare, Eye, PlayCircle, ChevronRight, ChevronDown, StopCircle, Activity, Bot, User, Crown, Flame, Truck, Camera, Plane, Timer } from "lucide-react"
+import { Loader2, Send, MessageSquare, CheckCircle2, Bot } from "lucide-react"
 import { API_BASE_URL } from "@/lib/constants"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import TeamOrgChart from "@/components/TeamOrgChart"
 import TeamTreeView from "@/components/TeamTreeView"
 import AgentDetailCard from "@/components/AgentDetailCard"
 import { AnnouncementPopup } from "@/components/AnnouncementPopup"
+import GameTopBar from "@/components/game/GameTopBar"
+import ObservationFrame, { type HoverCoords, type TargetMarker } from "@/components/game/ObservationFrame"
+import ChatBubble from "@/components/game/ChatBubble"
+import {
+  agentIdFromName,
+  agentMeta,
+  displayName,
+  friendlyText,
+  rawText,
+  typeLookupFromLevel,
+  typeLookupFromObservation,
+  type LevelAgents,
+} from "@/lib/agents"
+import { cn } from "@/lib/utils"
 
 interface GameViewProps {
   lobbyId: string
@@ -25,20 +34,24 @@ interface GameViewProps {
   role: string
   communicationMode: string
   collaborationMode: string
-  hierarchy: Record<string, string[]>
+  // manager -> {children, type, team_name} (lobby format) or manager -> children (legacy)
+  hierarchy: Record<string, any>
   agentId: number
   isManager: boolean
   isCreator: boolean
+  levelAgents?: LevelAgents
+  managers?: string[]
   onGameStop?: () => void
 }
 
 interface Message {
-  id: string
+  id?: string
   sender: string
-  sender_role: string
-  content: string
+  sender_role?: string
+  content?: string
+  message?: string
   timestamp: string
-  recipients: string[]
+  recipients?: string[]
 }
 
 interface GameState {
@@ -86,34 +99,49 @@ interface ActivityEvent {
 const ACTION_DEFINITIONS: Record<number, Record<number, { name: string; needsCoords: boolean }>> = {
   0: {
     // Firefighter
-    0: { name: "Do Nothing", needsCoords: false },
-    1: { name: "Move to Location", needsCoords: true },
-    2: { name: "Cut Tree", needsCoords: false },
-    3: { name: "Pick up Civilian", needsCoords: false },
-    4: { name: "Drop off Civilian", needsCoords: false },
-    5: { name: "Spray Water", needsCoords: true },
-    6: { name: "Refill Water", needsCoords: false },
+    0: { name: "Do nothing", needsCoords: false },
+    1: { name: "Move to location", needsCoords: true },
+    2: { name: "Cut tree", needsCoords: false },
+    3: { name: "Pick up civilian", needsCoords: false },
+    4: { name: "Drop off civilian", needsCoords: false },
+    5: { name: "Spray water", needsCoords: true },
+    6: { name: "Refill water", needsCoords: false },
   },
   1: {
     // Bulldozer
-    0: { name: "Do Nothing", needsCoords: false },
-    1: { name: "Move to Location", needsCoords: true },
-    2: { name: "Move while Cutting Trees", needsCoords: true },
+    0: { name: "Do nothing", needsCoords: false },
+    1: { name: "Move to location", needsCoords: true },
+    2: { name: "Move while cutting trees", needsCoords: true },
   },
   2: {
     // Drone
-    0: { name: "Do Nothing", needsCoords: false },
-    1: { name: "Move to Location", needsCoords: true },
+    0: { name: "Do nothing", needsCoords: false },
+    1: { name: "Move to location", needsCoords: true },
   },
   3: {
     // Helicopter
-    0: { name: "Do Nothing", needsCoords: false },
-    1: { name: "Move to Location", needsCoords: true },
-    2: { name: "Pick up Firefighters", needsCoords: false },
-    3: { name: "Drop off Firefighters", needsCoords: false },
-    4: { name: "Refill Water", needsCoords: false },
-    5: { name: "Deploy Water", needsCoords: false },
+    0: { name: "Do nothing", needsCoords: false },
+    1: { name: "Move to location", needsCoords: true },
+    2: { name: "Pick up firefighters", needsCoords: false },
+    3: { name: "Drop off firefighters", needsCoords: false },
+    4: { name: "Refill water", needsCoords: false },
+    5: { name: "Deploy water", needsCoords: false },
   },
+}
+
+const ManagerCrown = agentMeta(-1).icon
+
+const SYSTEM_LABELS: Record<string, string> = {
+  tldr: "Summary",
+  fast_feedback_queued: "Feedback queued",
+  fast_feedback_report: "Feedback report",
+  slow_feedback_preview: "Preview",
+}
+
+const PHASES: Record<string, { label: string; dot: string }> = {
+  status: { label: "Status phase", dot: "bg-blue-500" },
+  action: { label: "Action phase", dot: "bg-amber-500" },
+  env_step: { label: "Executing", dot: "bg-green-500" },
 }
 
 export default function GameView({
@@ -126,6 +154,8 @@ export default function GameView({
   agentId,
   isManager,
   isCreator,
+  levelAgents,
+  managers,
   onGameStop,
 }: GameViewProps) {
   const { toast } = useToast()
@@ -138,7 +168,6 @@ export default function GameView({
   const [availableRecipients, setAvailableRecipients] = useState<string[]>([])
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [waitingForNextTimestep, setWaitingForNextTimestep] = useState<boolean>(false)
-  const [feedback, setFeedback] = useState("")
   const [currentTimestep, setCurrentTimestep] = useState<number>(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollingInterval = useRef<NodeJS.Timeout | null>(null)
@@ -147,7 +176,7 @@ export default function GameView({
   const [chats, setChats] = useState<any[]>([])
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
 
-  const [teamViewMode, setTeamViewMode] = useState<'orgchart' | 'tree'>('orgchart')
+  const [teamViewMode, setTeamViewMode] = useState<"orgchart" | "tree">("orgchart")
   const [showStopConfirm, setShowStopConfirm] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
 
@@ -166,34 +195,38 @@ export default function GameView({
   const pendingAnnouncements = useRef<string[]>([])
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  // Hover-to-see-coordinates state
-  const [hoverCoords, setHoverCoords] = useState<{ gridX: number; gridY: number; label?: string } | null>(null)
+  // Hover-to-see-coordinates and click-to-target
+  const [hoverCoords, setHoverCoords] = useState<HoverCoords | null>(null)
+  const [marker, setMarker] = useState<TargetMarker | null>(null)
+  const [lastAction, setLastAction] = useState<string | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
   // Determine available recipients based on hierarchy and communication mode
   useEffect(() => {
     let connections: string[] = []
+    const childrenOf = (manager: string): string[] => {
+      const cfg = hierarchy[manager]
+      return Array.isArray(cfg) ? cfg : cfg?.children || []
+    }
     if (communicationMode === "team_chat") {
       connections = ["team_chat"]
     } else {
       if (!isManager) {
         let agentManager = null
-        for (const [manager, children] of Object.entries(hierarchy)) {
-          if (children.includes(role)) {
+        for (const manager of Object.keys(hierarchy)) {
+          if (childrenOf(manager).includes(role)) {
             agentManager = manager
             break
           }
         }
         if (agentManager) {
           connections.push(`team_${agentManager}`)
-          const teamMembers = hierarchy[agentManager] || []
-          connections.push(...teamMembers)
+          connections.push(...childrenOf(agentManager))
           connections.push(agentManager)
         }
       } else {
         connections.push(`subteam_${role}`)
-        const subteamMembers = hierarchy[role] || []
-        connections.push(...subteamMembers)
+        connections.push(...childrenOf(role))
       }
     }
     setAvailableRecipients(connections)
@@ -205,7 +238,7 @@ export default function GameView({
     })
   }, [role, communicationMode, collaborationMode, hierarchy, isManager])
 
-  // Fetch observations from the new API
+  // Fetch observations
   useEffect(() => {
     const fetchObservations = async () => {
       try {
@@ -220,7 +253,10 @@ export default function GameView({
 
         const data = await response.json()
 
-        if (data.error && (data.error.includes("initializing") || data.error.includes("Waiting for observations"))) {
+        if (
+          data.error &&
+          (data.error.includes("initializing") || data.error.includes("Waiting for observations") || data.error.includes("not found in observations"))
+        ) {
           setWaitingForNextTimestep(true)
           return
         }
@@ -240,20 +276,23 @@ export default function GameView({
           setCurrentTimestep(data.timestep)
         }
 
-        setGameState((prev) => ({
-          ...prev,
-          turn: prev?.turn || 1,
-          phase: prev?.phase || "Input Phase",
-          players: data.players || prev?.players || {},
-          observations: {
-            [agentId]: {
-              image_url: image_url,
-              data: data,
-            },
-          },
-          messages: prev?.messages || [],
-          chats: prev?.chats || [],
-        } as GameState))
+        setGameState(
+          (prev) =>
+            ({
+              ...prev,
+              turn: prev?.turn || 1,
+              phase: prev?.phase || "Input Phase",
+              players: data.players || prev?.players || {},
+              observations: {
+                [agentId]: {
+                  image_url: image_url,
+                  data: data,
+                },
+              },
+              messages: prev?.messages || [],
+              chats: prev?.chats || [],
+            }) as GameState,
+        )
 
         // Detect destroyed agents from observation data
         if (data.children_data) {
@@ -278,9 +317,8 @@ export default function GameView({
             const chatData = await chatResponse.json()
             const newChats = Object.entries(chatData.chats || {}).map(([id, data]: [string, any]) => ({
               id,
-              name: id.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
               participants: data.participants || [],
-              messages: data.messages || []
+              messages: data.messages || [],
             }))
             setChats(newChats)
 
@@ -305,6 +343,7 @@ export default function GameView({
         clearInterval(pollingInterval.current)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lobbyId, playerName, role, toast, agentId])
 
   useEffect(() => {
@@ -322,6 +361,11 @@ export default function GameView({
 
     return () => clearInterval(timerInterval)
   }, [timeRemaining])
+
+  // The target marker refers to the previous step's map: drop it when a new step arrives
+  useEffect(() => {
+    setMarker(null)
+  }, [currentTimestep])
 
   const prevMessagesRef = useRef<Message[]>([])
   useEffect(() => {
@@ -348,7 +392,7 @@ export default function GameView({
           lobby_id: lobbyId,
           player_name: playerName,
           chat_id: selectedChatId,
-          message: message,
+          message: rawText(message),
         }),
       })
 
@@ -364,9 +408,8 @@ export default function GameView({
           const chatData = await chatResponse.json()
           const newChats = Object.entries(chatData.chats || {}).map(([id, data]: [string, any]) => ({
             id,
-            name: id.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
             participants: data.participants || [],
-            messages: data.messages || []
+            messages: data.messages || [],
           }))
           setChats(newChats)
 
@@ -379,8 +422,8 @@ export default function GameView({
       }
     } catch (err) {
       toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
+        title: "Message not sent",
+        description: "Please try again.",
         variant: "destructive",
       })
     }
@@ -397,8 +440,8 @@ export default function GameView({
       const actionDef = ACTION_DEFINITIONS[agentType]?.[selectedActionType]
       if (!actionDef) {
         toast({
-          title: "Invalid Action",
-          description: "Selected action is not valid for this agent type.",
+          title: "Invalid action",
+          description: "That action is not available for this agent.",
           variant: "destructive",
         })
         return
@@ -426,73 +469,28 @@ export default function GameView({
         throw new Error("Failed to submit action")
       }
 
-      const result = await response.json()
+      await response.json()
 
-      setGameState((prev) => ({
-        ...prev,
-        players: {
-          ...prev?.players,
-          [playerName]: {
-            ...prev?.players?.[playerName],
-            has_acted: true,
-            role: role,
-          },
-        },
-      } as GameState))
+      setGameState(
+        (prev) =>
+          ({
+            ...prev,
+            players: {
+              ...prev?.players,
+              [playerName]: {
+                ...prev?.players?.[playerName],
+                has_acted: true,
+                role: role,
+              },
+            },
+          }) as GameState,
+      )
 
-      setSelectedActionType(0)
-      setActionParam1(0)
-      setActionParam2(0)
-
-      toast({
-        title: "Action Submitted",
-        description: result.message || "Your action has been submitted for this turn.",
-      })
+      setLastAction(actionDef.needsCoords ? `${actionDef.name} → (${actionParam1}, ${actionParam2})` : actionDef.name)
     } catch (err) {
       toast({
-        title: "Error",
-        description: "Failed to submit action. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleSubmitFeedback = async () => {
-    if (!feedback.trim()) {
-      toast({
-        title: "Empty Feedback",
-        description: "Please enter some feedback before submitting.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/submit_feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lobby_id: lobbyId,
-          player_name: playerName,
-          agent_id: agentId,
-          feedback: feedback,
-          timestep: currentTimestep,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to submit feedback")
-      }
-
-      setFeedback("")
-      toast({
-        title: "Feedback Accepted",
-        description: `Your feedback will take effect at timestep ${currentTimestep + 2}.`,
-      })
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: "Failed to submit feedback. Please try again.",
+        title: "Action not submitted",
+        description: "Please try again.",
         variant: "destructive",
       })
     }
@@ -507,11 +505,11 @@ export default function GameView({
         body: JSON.stringify({ lobby_id: lobbyId, player_name: playerName }),
       })
       if (!res.ok) throw new Error("Failed to stop game")
-      toast({ title: "Game Stopped", description: "The game has been stopped." })
+      toast({ title: "Game stopped" })
       setShowStopConfirm(false)
       onGameStop?.()
     } catch {
-      toast({ title: "Error", description: "Failed to stop game.", variant: "destructive" })
+      toast({ title: "Could not stop the game", variant: "destructive" })
     } finally {
       setIsStopping(false)
     }
@@ -525,9 +523,7 @@ export default function GameView({
     if (!isGameActive) return
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(
-          `${API_BASE_URL}/events?lobby_id=${lobbyId}&since_seq=${latestEventSeq}`
-        )
+        const res = await fetch(`${API_BASE_URL}/events?lobby_id=${lobbyId}&since_seq=${latestEventSeq}`)
         if (!res.ok) return
         const data = await res.json()
         const newEvents: ActivityEvent[] = (data.events || []).map((e: any) => ({
@@ -545,7 +541,7 @@ export default function GameView({
             return combined.slice(-20)
           })
           setLatestEventSeq(data.latest_seq ?? latestEventSeq)
-          setThinkingAgentIds(prev => {
+          setThinkingAgentIds((prev) => {
             const next = new Set(prev)
             for (const event of newEvents) {
               const eventAgentId = (event as ActivityEvent).agent_id
@@ -562,7 +558,7 @@ export default function GameView({
             return next
           })
           // Queue announcements — display when next observation poll arrives
-          const announcements = newEvents.filter(e => e.event_type === "announcement" || e.event_type === "agent_destroyed")
+          const announcements = newEvents.filter((e) => e.event_type === "announcement" || e.event_type === "agent_destroyed")
           if (announcements.length > 0) {
             pendingAnnouncements.current.push(announcements[announcements.length - 1].detail)
           }
@@ -622,7 +618,7 @@ export default function GameView({
             const unique = newMessages.filter((m) => !existingIds.has(m.id))
             return unique.length > 0 ? [...prev, ...unique] : prev
           })
-          if (newMessages.filter(m => m.type !== "tldr" && m.type !== "fast_feedback_queued").length > 0) {
+          if (newMessages.filter((m) => m.type !== "tldr" && m.type !== "fast_feedback_queued").length > 0) {
             setIsWaitingForReply(false)
           }
           const latest = responses[responses.length - 1]
@@ -651,7 +647,7 @@ export default function GameView({
       const elapsed = Math.floor((Date.now() - gameStartTimeRef.current) / 1000)
       const minutes = Math.floor(elapsed / 60)
       const seconds = elapsed % 60
-      setElapsedTime(`${minutes}:${seconds.toString().padStart(2, '0')}`)
+      setElapsedTime(`${minutes}:${seconds.toString().padStart(2, "0")}`)
     }, 1000)
     return () => clearInterval(interval)
   }, [])
@@ -670,7 +666,7 @@ export default function GameView({
     }
     setChatMessages((prev) => [...prev, newMsg])
     setIsWaitingForReply(true)
-    const inputCopy = chatInput
+    const inputCopy = rawText(chatInput)
     setChatInput("")
     try {
       await fetch(`${API_BASE_URL}/send_chat`, {
@@ -686,8 +682,8 @@ export default function GameView({
       })
     } catch {
       toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
+        title: "Message not sent",
+        description: "Please try again.",
         variant: "destructive",
       })
     }
@@ -696,15 +692,43 @@ export default function GameView({
   const hasActed = gameState?.players[playerName]?.has_acted || false
   const observation = gameState?.observations[agentId] || { image_url: null, data: {} }
 
-  // --- Hover-to-see-coordinates ---
-  const pixelToGridCoords = (
-    px: number, py: number,
-    metadata: any
-  ): { gridX: number; gridY: number; label?: string } | null => {
+  // ---- Friendly names ----
+  const typeOfFromObs = useMemo(() => typeLookupFromObservation(observation.data, observation.data?.children_data), [observation.data])
+  const typeOfFromLevel = useMemo(() => typeLookupFromLevel(levelAgents, managers), [levelAgents, managers])
+  const typeOf = (id: number): number | null => typeOfFromObs(id) ?? typeOfFromLevel(id)
+  const label = (name: string) => {
+    const id = agentIdFromName(name)
+    return id === null ? name : displayName(name, typeOf(id))
+  }
+  const friendly = (text: string) => friendlyText(text, typeOf)
+  const teamNameOf = (manager: string): string | null => {
+    const cfg = hierarchy[manager]
+    return cfg && !Array.isArray(cfg) && cfg.team_name ? cfg.team_name : null
+  }
+  const chatTitle = (id: string) => {
+    if (id === "team_chat") return "Team chat"
+    const m = /^(?:sub)?team_(AGENT_\d+)$/.exec(id)
+    if (m) return teamNameOf(m[1]) || `Team of ${label(m[1])}`
+    return id.replace(/_/g, " ")
+  }
+  const senderLine = (msg: Message) => {
+    if (agentIdFromName(msg.sender) !== null) return label(msg.sender)
+    const roleName = msg.sender_role && agentIdFromName(msg.sender_role) !== null ? label(msg.sender_role) : null
+    return roleName ? `${msg.sender} · ${roleName}` : msg.sender
+  }
+  const myManager = useMemo(() => {
+    for (const [manager, cfg] of Object.entries(hierarchy)) {
+      const children: string[] = Array.isArray(cfg) ? cfg : cfg?.children || []
+      if (children.includes(role)) return manager
+    }
+    return null
+  }, [hierarchy, role])
+
+  // --- Hover-to-see-coordinates / click-to-target ---
+  const pixelToGridCoords = (px: number, py: number, metadata: any): HoverCoords | null => {
     if (metadata.type === "worker") {
       const mm = metadata.minimap
-      if (mm?.bounds && px >= mm.pixel_x && px < mm.pixel_x + mm.pixel_width
-          && py >= mm.pixel_y && py < mm.pixel_y + mm.pixel_height) {
+      if (mm?.bounds && px >= mm.pixel_x && px < mm.pixel_x + mm.pixel_width && py >= mm.pixel_y && py < mm.pixel_y + mm.pixel_height) {
         const relX = (px - mm.pixel_x) / mm.pixel_width
         const relY = (py - mm.pixel_y) / mm.pixel_height
         return {
@@ -718,20 +742,18 @@ export default function GameView({
 
     if (metadata.type === "manager") {
       const acc = metadata.accumulative
-      if (acc?.bounds && px >= acc.pixel_x && px < acc.pixel_x + acc.pixel_width
-          && py >= acc.pixel_y && py < acc.pixel_y + acc.pixel_height) {
+      if (acc?.bounds && px >= acc.pixel_x && px < acc.pixel_x + acc.pixel_width && py >= acc.pixel_y && py < acc.pixel_y + acc.pixel_height) {
         const relX = (px - acc.pixel_x) / acc.pixel_width
         const relY = (py - acc.pixel_y) / acc.pixel_height
         return {
           gridX: Math.round(acc.bounds.grid_min_x + relX * (acc.bounds.grid_max_x - acc.bounds.grid_min_x)),
           gridY: Math.round(acc.bounds.grid_min_y + relY * (acc.bounds.grid_max_y - acc.bounds.grid_min_y)),
-          label: "Accumulative",
+          label: "Overview",
         }
       }
 
       const cg = metadata.children_grid
-      if (cg && px >= cg.pixel_x && px < cg.pixel_x + cg.pixel_width
-          && py >= cg.pixel_y && py < cg.pixel_y + cg.pixel_height) {
+      if (cg && px >= cg.pixel_x && px < cg.pixel_x + cg.pixel_width && py >= cg.pixel_y && py < cg.pixel_y + cg.pixel_height) {
         const relX = px - cg.pixel_x
         const relY = py - cg.pixel_y
         const col = Math.floor(relX / cg.child_width)
@@ -750,7 +772,7 @@ export default function GameView({
             return {
               gridX: Math.round(b.grid_min_x + normX * (b.grid_max_x - b.grid_min_x)),
               gridY: Math.round(b.grid_min_y + normY * (b.grid_max_y - b.grid_min_y)),
-              label: `Agent ${worker.id}`,
+              label: displayName(`AGENT_${worker.id}`, typeOf(worker.id)),
             }
           }
         }
@@ -759,28 +781,50 @@ export default function GameView({
     return null
   }
 
-  const handleImageMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
+  // Natural-image pixel under the cursor plus its position as a fraction of the rendered image
+  const imagePointFromEvent = (e: React.MouseEvent<HTMLImageElement>) => {
     const img = imgRef.current
     const metadata = observation.data?.image_coord_metadata
-    if (!img || !metadata) { setHoverCoords(null); return }
-
+    if (!img || !metadata) return null
     const rect = img.getBoundingClientRect()
     const natW = metadata.total_width
     const natH = metadata.total_height
     const scale = Math.min(rect.width / natW, rect.height / natH)
     const offX = (rect.width - natW * scale) / 2
     const offY = (rect.height - natH * scale) / 2
-
     const imgPx = (e.clientX - rect.left - offX) / scale
     const imgPy = (e.clientY - rect.top - offY) / scale
-
-    if (imgPx < 0 || imgPx >= natW || imgPy < 0 || imgPy >= natH) {
-      setHoverCoords(null); return
+    if (imgPx < 0 || imgPx >= natW || imgPy < 0 || imgPy >= natH) return null
+    return {
+      imgPx,
+      imgPy,
+      metadata,
+      fx: (e.clientX - rect.left) / rect.width,
+      fy: (e.clientY - rect.top) / rect.height,
     }
-    setHoverCoords(pixelToGridCoords(imgPx, imgPy, metadata))
+  }
+
+  const handleImageMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
+    const p = imagePointFromEvent(e)
+    setHoverCoords(p ? pixelToGridCoords(p.imgPx, p.imgPy, p.metadata) : null)
   }
 
   const handleImageMouseLeave = () => setHoverCoords(null)
+
+  const agentType: number = observation.data?.type ?? 0
+  const currentActionDef = ACTION_DEFINITIONS[agentType]?.[selectedActionType]
+  const canTarget = !isManager && collaborationMode === "human_control" && !hasActed && !!currentActionDef?.needsCoords
+
+  const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!canTarget) return
+    const p = imagePointFromEvent(e)
+    if (!p) return
+    const coords = pixelToGridCoords(p.imgPx, p.imgPy, p.metadata)
+    if (!coords) return
+    setActionParam1(coords.gridX)
+    setActionParam2(coords.gridY)
+    setMarker({ fx: p.fx, fy: p.fy, label: `target (${coords.gridX}, ${coords.gridY})` })
+  }
 
   // Count total agents in team hierarchy
   const getAgentCount = () => {
@@ -817,192 +861,114 @@ export default function GameView({
     return findAgent(flatData)
   }
 
-  // Filter chat messages by selected agent (show tldr to all, others only for selected agent)
-  const filteredChatMessages = selectedAgentId !== null
-    ? chatMessages.filter(msg => msg.agentId === selectedAgentId)
-    : chatMessages
+  // Filter chat messages by selected agent
+  const filteredChatMessages = selectedAgentId !== null ? chatMessages.filter((msg) => msg.agentId === selectedAgentId) : chatMessages
 
-  // Icon map for agent types (used in chat header)
-  const AGENT_TYPE_ICONS: Record<number, typeof Flame> = {
-    [-1]: Crown,
-    0: Flame,
-    1: Truck,
-    2: Camera,
-    3: Plane,
-  }
+  const missionText = observation.data?.task_description ? friendly(observation.data.task_description) : ""
+  const progress =
+    observation.data?.reward_target && observation.data.reward_target.target > 0
+      ? {
+          label: observation.data.reward_target.label,
+          value: observation.data.rewards?.[observation.data.reward_target.index] || 0,
+          target: observation.data.reward_target.target,
+        }
+      : null
 
-  // Announcement popup for game events
-  const announcementPopup = (
-    <AnnouncementPopup
-      announcement={activeAnnouncement}
-      onDismiss={() => setActiveAnnouncement(null)}
+  const topBar = (
+    <GameTopBar
+      mission={missionText}
+      step={currentTimestep}
+      elapsed={elapsedTime}
+      playerName={playerName}
+      isCreator={isCreator}
+      onStop={() => setShowStopConfirm(true)}
+      progress={progress}
     />
   )
+
+  // Announcement popup for game events
+  const announcementPopup = <AnnouncementPopup announcement={activeAnnouncement ? friendly(activeAnnouncement) : null} onDismiss={() => setActiveAnnouncement(null)} />
 
   // Shared stop game confirmation dialog (creator only)
   const stopGameDialog = isCreator ? (
     <Dialog open={showStopConfirm} onOpenChange={setShowStopConfirm}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Stop Game?</DialogTitle>
-          <DialogDescription>
-            This will immediately terminate the game for all players and kill the simulation. This action cannot be undone.
-          </DialogDescription>
+          <DialogTitle>Stop the game?</DialogTitle>
+          <DialogDescription>This ends the game for every player and shuts the simulation down. It cannot be undone.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setShowStopConfirm(false)} disabled={isStopping}>Cancel</Button>
+          <Button variant="outline" onClick={() => setShowStopConfirm(false)} disabled={isStopping}>
+            Cancel
+          </Button>
           <Button variant="destructive" onClick={handleStopGame} disabled={isStopping}>
-            {isStopping && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Yes, Stop Game
+            {isStopping && <Loader2 className="h-4 w-4 animate-spin" />}
+            Stop game
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   ) : null
 
+  const card = "rounded-lg border bg-card shadow-sm"
+
   // ============================================================
-  // HORIZONTAL LAYOUT for human_feedback mode with manager agent
+  // MANAGER VIEW (human_feedback mode, manager agent)
   // ============================================================
-  if (collaborationMode === 'human_feedback' && (observation.data?.type === -1 || observation.data?.type === undefined)) {
+  if (collaborationMode === "human_feedback" && (observation.data?.type === -1 || observation.data?.type === undefined)) {
     const agentCount = getAgentCount()
+    const phase = PHASES[currentPhase] || { label: "Idle", dot: "bg-stone-400" }
+    const selectedData = selectedAgentId !== null ? (selectedAgentId === agentId ? observation.data : observation.data?.children_data?.[String(selectedAgentId)]) : null
+    const selectedType: number | null = selectedData?.type ?? (selectedAgentId !== null ? typeOf(selectedAgentId) : null)
+    const SelectedIcon = agentMeta(selectedType).icon
+    const selectedLabel = selectedAgentId !== null ? displayName(`AGENT_${selectedAgentId}`, selectedType) : null
+    const selectedTeam = selectedAgentId !== null ? teamNameOf(`AGENT_${selectedAgentId}`) : null
+    const selectedDestroyed = selectedAgentId !== null && destroyedAgentIds.has(selectedAgentId)
 
     return (
-      <div className="h-screen flex flex-col p-3 overflow-hidden">
-        {/* Top Bar - Mission + Timestep + Player */}
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex-1 flex items-center gap-1 px-2 py-1">
-            <span className="font-medium text-gray-700 flex-shrink-0 text-sm">Mission:</span>
-            <span className="text-gray-600 text-xs truncate" title={observation.data?.task_description}>
-              {observation.data?.task_description || "No mission"}
-            </span>
-          </div>
-          {/* Keep the badges and stop button div that follows */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Badge variant="outline" className="text-sm font-bold px-3 py-1">
-              <Clock className="h-4 w-4 mr-1" />
-              T: {currentTimestep}
-            </Badge>
-            <Badge variant="outline" className="text-sm px-3 py-1">
-              <Timer className="h-4 w-4 mr-1" />
-              {elapsedTime}
-            </Badge>
-            <Badge className="text-xs">{playerName}</Badge>
-            {isCreator && (
-              <Button variant="destructive" size="sm" className="h-7 px-2 text-xs"
-                onClick={() => setShowStopConfirm(true)}>
-                <StopCircle className="h-3 w-3 mr-1" /> Stop Game
-              </Button>
-            )}
-          </div>
-        </div>
+      <div className="flex h-screen flex-col gap-2 overflow-hidden p-3">
+        {topBar}
 
-        {observation.data?.reward_target && observation.data.reward_target.target > 0 && (
-          <div className="mb-2 px-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-500 flex-shrink-0">{observation.data.reward_target.label}</span>
-              <div className="flex-1 bg-gray-200 rounded-full h-1.5">
-                <div
-                  className="bg-green-500 h-1.5 rounded-full transition-all"
-                  style={{ width: `${Math.min(((observation.data.rewards?.[observation.data.reward_target.index] || 0) / observation.data.reward_target.target) * 100, 100)}%` }}
+        <div className="flex min-h-0 flex-1 gap-3">
+          {/* Left: observation (55%) */}
+          <div className="flex min-h-0 w-[55%] flex-col">
+            <ObservationFrame
+              imageUrl={observation.image_url}
+              waiting={waitingForNextTimestep}
+              imgRef={imgRef}
+              hoverCoords={hoverCoords}
+              onMouseMove={handleImageMouseMove}
+              onMouseLeave={handleImageMouseLeave}
+            />
+          </div>
+
+          {/* Right: team + chat (45%) */}
+          <div className="flex min-h-0 w-[45%] flex-col gap-2">
+            <div className="flex h-7 flex-shrink-0 items-center gap-2.5">
+              <span className="text-[13px] font-semibold">Team</span>
+              <span className="text-[13px] text-muted-foreground">
+                {agentCount} agent{agentCount === 1 ? "" : "s"}
+              </span>
+              <span className="ml-1 inline-flex items-center gap-1.5 text-xs text-stone-700">
+                <span className={cn("h-2 w-2 rounded-full", phase.dot)} />
+                {phase.label}
+              </span>
+              <div className="ml-auto">
+                <Segmented
+                  aria-label="Team view"
+                  value={teamViewMode}
+                  onChange={setTeamViewMode}
+                  options={[
+                    { value: "orgchart", label: "Graph" },
+                    { value: "tree", label: "List" },
+                  ]}
                 />
               </div>
-              <span className="text-[10px] text-gray-500 flex-shrink-0">
-                {observation.data.rewards?.[observation.data.reward_target.index] || 0}/{observation.data.reward_target.target}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Main Content - Horizontal Split */}
-        <div className="flex-1 flex gap-3 min-h-0">
-          {/* Left: Observation Image + Activity Feed (55%) */}
-          <div className="w-[55%] flex flex-col gap-2 min-h-0">
-            <div className="flex-1 flex items-center justify-center bg-gray-100 rounded-lg border overflow-hidden min-h-0 relative">
-              {waitingForNextTimestep ? (
-                <div className="text-center space-y-3">
-                  <Loader2 className="h-10 w-10 animate-spin mx-auto text-blue-600" />
-                  <div>
-                    <p className="text-blue-700 font-semibold">Waiting for next observation</p>
-                    <p className="text-blue-600 text-sm">Processing next timestep...</p>
-                  </div>
-                </div>
-              ) : observation.image_url ? (
-                <>
-                  <img
-                    ref={imgRef}
-                    src={observation.image_url}
-                    alt="Observation"
-                    className="max-h-full max-w-full object-contain"
-                    onMouseMove={handleImageMouseMove}
-                    onMouseLeave={handleImageMouseLeave}
-                  />
-                  {hoverCoords && (
-                    <div className="absolute top-2 left-2 bg-black/75 text-white text-xs px-2 py-1 rounded pointer-events-none font-mono z-10">
-                      ({hoverCoords.gridX}, {hoverCoords.gridY}){hoverCoords.label ? ` - ${hoverCoords.label}` : ''}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center text-gray-400">
-                  <Eye className="h-12 w-12 mx-auto mb-2" />
-                  <p className="font-medium">No observation available</p>
-                </div>
-              )}
             </div>
 
-          </div>
-
-          {/* Right: Team + Chat + Activity (45%) */}
-          <div className="w-[45%] flex flex-col gap-2 min-h-0">
-            {/* Team Header with View Toggle + Phase Banner */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-sm font-medium text-gray-600">
-                Team ({agentCount} agents)
-              </span>
-              {/* Phase status banner */}
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ml-1 ${
-                currentPhase === "status"
-                  ? "bg-blue-50 text-blue-700 border-blue-200"
-                  : currentPhase === "action"
-                  ? "bg-orange-50 text-orange-700 border-orange-200"
-                  : currentPhase === "env_step"
-                  ? "bg-green-50 text-green-700 border-green-200"
-                  : "bg-gray-50 text-gray-500 border-gray-200"
-              }`}>
-                {currentPhase === "status"
-                  ? "STATUS PHASE"
-                  : currentPhase === "action"
-                  ? "ACTION PHASE"
-                  : currentPhase === "env_step"
-                  ? "EXECUTING"
-                  : "IDLE"}
-              </span>
-              <div className="ml-auto flex gap-1">
-                <Button
-                  variant={teamViewMode === 'orgchart' ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setTeamViewMode('orgchart')}
-                  title="Org chart view"
-                >
-                  Graph
-                </Button>
-                <Button
-                  variant={teamViewMode === 'tree' ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setTeamViewMode('tree')}
-                  title="Tree list view"
-                >
-                  List
-                </Button>
-              </div>
-            </div>
-
-            {/* Team View Content */}
-            <div className="h-[40%] overflow-auto min-h-0 border rounded-lg bg-white flex">
-              <div className={`overflow-auto ${teamViewMode === 'tree' && selectedAgentId !== null ? 'w-1/2 border-r' : 'w-full'}`}>
-                {teamViewMode === 'orgchart' ? (
+            <div className={cn("flex h-[40%] min-h-0 flex-shrink-0 overflow-hidden", card)}>
+              <div className={cn("overflow-auto", teamViewMode === "tree" && selectedAgentId !== null ? "w-1/2 border-r" : "w-full")}>
+                {teamViewMode === "orgchart" ? (
                   <TeamOrgChart
                     rootAgent={observation.data}
                     childrenData={observation.data?.children_data || {}}
@@ -1011,6 +977,7 @@ export default function GameView({
                     onAgentSelect={setSelectedAgentId}
                     thinkingAgentIds={thinkingAgentIds}
                     destroyedAgentIds={destroyedAgentIds}
+                    typeOf={typeOf}
                   />
                 ) : (
                   <TeamTreeView
@@ -1021,119 +988,79 @@ export default function GameView({
                     onAgentSelect={setSelectedAgentId}
                     thinkingAgentIds={thinkingAgentIds}
                     destroyedAgentIds={destroyedAgentIds}
-                    disableHover={true}
+                    disableHover
+                    typeOf={typeOf}
                   />
                 )}
               </div>
-              {teamViewMode === 'tree' && selectedAgentId !== null && (() => {
-                const selectedData = getSelectedAgentData()
-                return selectedData ? (
-                  <div className="w-1/2 p-2 overflow-y-auto">
-                    <AgentDetailCard agent={selectedData} />
-                  </div>
-                ) : null
-              })()}
+              {teamViewMode === "tree" && selectedAgentId !== null && selectedData && (
+                <div className="w-1/2 overflow-y-auto p-2">
+                  <AgentDetailCard agent={selectedData} typeOf={typeOf} />
+                </div>
+              )}
             </div>
 
-            {/* Chat Panel */}
-            <div className="flex-1 flex flex-col min-h-0 border rounded-lg bg-white overflow-hidden">
-              {/* Chat header */}
-              <div className="flex items-center gap-2 px-3 py-2 border-b flex-shrink-0 bg-gray-50">
-                <MessageSquare className="h-4 w-4 text-gray-500 flex-shrink-0" />
-                {selectedAgentId !== null ? (() => {
-                  if (selectedAgentId === agentId) {
-                    return (
-                      <span className="text-xs font-semibold text-gray-600">
-                        Chat — <span className="font-bold">{role} (you)</span>
-                      </span>
-                    )
-                  }
-                  const ad = observation.data?.children_data?.[String(selectedAgentId)]
-                  const agentType: number = ad?.type ?? 0
-                  const AgentIcon = AGENT_TYPE_ICONS[agentType] ?? Flame
-                  const agentLabel = ad
-                    ? (ad.name || (agentType === -1 ? "Manager" : agentType === 0 ? "Firefighter" : agentType === 1 ? "Bulldozer" : agentType === 2 ? "Drone" : "Helicopter"))
-                    : `Agent`
-                  return (
-                    <span className="text-xs font-semibold text-gray-600 flex items-center gap-1">
-                      Chat —
-                      <AgentIcon className="h-3 w-3 flex-shrink-0" />
-                      <span className="font-bold">{agentLabel}</span>
-                      {selectedAgentId !== null && destroyedAgentIds.has(selectedAgentId) && (
-                        <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded ml-1">DESTROYED</span>
-                      )}
-                    </span>
-                  )
-                })() : (
-                  <span className="text-xs font-semibold text-gray-600">
-                    Chat — select an agent above
-                  </span>
+            {/* Chat */}
+            <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", card)}>
+              <div className="flex flex-shrink-0 items-center gap-2 border-b bg-background px-3 py-2">
+                {selectedAgentId !== null && selectedLabel ? (
+                  <>
+                    <SelectedIcon className={cn("h-3.5 w-3.5", agentMeta(selectedType).text)} />
+                    <span className="text-[13px] font-semibold">{selectedLabel}</span>
+                    {selectedAgentId === agentId ? (
+                      <Badge className="border-blue-200 bg-brand-soft text-blue-700 hover:bg-brand-soft" variant="outline">
+                        You
+                      </Badge>
+                    ) : (
+                      selectedTeam && <span className="text-xs text-muted-foreground">{selectedTeam}</span>
+                    )}
+                    {selectedDestroyed && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">Destroyed</span>}
+                  </>
+                ) : (
+                  <>
+                    <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[13px] text-muted-foreground">Select an agent above to chat</span>
+                  </>
                 )}
               </div>
 
-              {/* Message log */}
-              <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-0">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
                 {filteredChatMessages.length === 0 ? (
-                  <div className="text-center text-gray-400 py-6">
-                    <MessageSquare className="h-7 w-7 mx-auto mb-1 opacity-40" />
-                    <p className="text-xs">Select an agent and send a message</p>
+                  <div className="py-6 text-center text-stone-400">
+                    <MessageSquare className="mx-auto mb-1 h-7 w-7 opacity-40" />
+                    <p className="text-xs">Ask a question or give feedback</p>
                   </div>
                 ) : (
-                  filteredChatMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex gap-1.5 ${msg.role === "human" ? "justify-end" : "justify-start"}`}
-                    >
-                      {msg.role === "agent" && (
-                        <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <Bot className="h-3 w-3 text-blue-600" />
-                        </div>
-                      )}
-                      <div className={`max-w-[78%] rounded-lg px-2.5 py-1.5 text-xs leading-relaxed ${
-                        msg.role === "human"
-                          ? "bg-blue-600 text-white"
-                          : msg.type === "question_answer"
-                          ? "bg-purple-50 border border-purple-200 text-gray-800"
-                          : msg.type === "slow_feedback_preview"
-                          ? "bg-amber-50 border border-amber-200 text-gray-800"
-                          : msg.type === "fast_feedback_queued" || msg.type === "fast_feedback_report"
-                          ? "bg-orange-50 border border-orange-200 text-gray-800"
-                          : msg.type === "tldr"
-                          ? "bg-teal-50 border border-teal-200 text-gray-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}>
-                        <p>{msg.content}</p>
-                        <div className="text-[10px] opacity-50 mt-0.5 text-right">
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </div>
-                      </div>
-                      {msg.role === "human" && (
-                        <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <User className="h-3 w-3 text-white" />
-                        </div>
-                      )}
-                    </div>
-                  ))
+                  filteredChatMessages.map((msg) =>
+                    msg.role === "human" ? (
+                      <ChatBubble key={msg.id} who="human" text={friendly(msg.content)} time={msg.timestamp} />
+                    ) : msg.type && SYSTEM_LABELS[msg.type] ? (
+                      <ChatBubble key={msg.id} who="system" label={SYSTEM_LABELS[msg.type]} text={friendly(msg.content)} time={msg.timestamp} />
+                    ) : (
+                      <ChatBubble key={msg.id} who="agent" text={friendly(msg.content)} time={msg.timestamp} />
+                    ),
+                  )
                 )}
                 {isWaitingForReply && (
-                  <div className="flex gap-1.5 justify-start">
-                    <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Bot className="h-3 w-3 text-blue-600" />
+                  <div className="flex justify-start gap-1.5">
+                    <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft">
+                      <Bot className="h-3 w-3 text-brand" />
                     </div>
-                    <div className="bg-gray-100 rounded-lg px-3 py-2 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <div className="flex items-center gap-1 rounded-[10px] border bg-card px-3 py-2">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-stone-400" style={{ animationDelay: "0ms" }} />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-stone-400" style={{ animationDelay: "150ms" }} />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-stone-400" style={{ animationDelay: "300ms" }} />
                     </div>
                   </div>
                 )}
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Chat input */}
-              <div className="flex gap-1.5 p-2 border-t flex-shrink-0">
+              <div className="flex flex-shrink-0 gap-1.5 border-t p-2">
                 <Input
-                  placeholder={selectedAgentId !== null && destroyedAgentIds.has(selectedAgentId) ? "This agent has been destroyed" : selectedAgentId !== null ? "Message agent..." : "Select an agent first"}
+                  placeholder={
+                    selectedAgentId === null ? "Select an agent first" : selectedDestroyed ? "This agent has been destroyed" : `Message ${selectedLabel}…`
+                  }
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -1142,20 +1069,14 @@ export default function GameView({
                       handleSendChat()
                     }
                   }}
-                  disabled={selectedAgentId === null || destroyedAgentIds.has(selectedAgentId ?? -1)}
-                  className="h-8 text-xs"
+                  disabled={selectedAgentId === null || selectedDestroyed}
+                  className="h-9 text-[13px]"
                 />
-                <Button
-                  size="icon"
-                  onClick={handleSendChat}
-                  disabled={!chatInput.trim() || selectedAgentId === null || destroyedAgentIds.has(selectedAgentId ?? -1)}
-                  className="h-8 w-8 flex-shrink-0"
-                >
+                <Button size="icon" onClick={handleSendChat} disabled={!chatInput.trim() || selectedAgentId === null || selectedDestroyed} className="h-9 w-9 flex-shrink-0">
                   <Send className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
-
           </div>
         </div>
         {stopGameDialog}
@@ -1165,333 +1086,261 @@ export default function GameView({
   }
 
   // ============================================================
-  // ORIGINAL LAYOUT for human_control mode or non-manager agents
+  // WORKER VIEW (human_control, or a human on a worker role)
   // ============================================================
+  const meta = agentMeta(observation.data?.type ?? typeOf(agentId))
+  const AgentIcon = meta.icon
+  const myLabel = displayName(role || `AGENT_${agentId}`, observation.data?.type ?? typeOf(agentId))
+  const alive = observation.data?.alive !== false
+  const position: number[] | null = observation.data?.last_position || null
+  const extra: number[] | null = Array.isArray(observation.data?.extra_variables) ? observation.data.extra_variables : null
+  const showsWater = (agentType === 0 || agentType === 3) && extra && extra.length > 1 && /water/i.test(observation.data?.task_description || "")
+  const carrying =
+    extra && extra.length > 0
+      ? agentType === 0
+        ? extra[0]
+          ? "Civilian"
+          : "Nothing"
+        : agentType === 3
+          ? extra[0]
+            ? `${Math.round(extra[0])}/5 firefighters`
+            : "Nothing"
+          : null
+      : null
+  const teamMates = gameState?.players ? Object.entries(gameState.players).filter(([name]) => name !== playerName) : []
+  const waitingOn = teamMates.filter(([, info]) => !info.has_acted).map(([name]) => name)
+  const aiRun = collaborationMode !== "human_control"
+
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">CREW-Wildfire</h1>
-        <Badge variant="outline" className="text-base px-4 py-2 font-semibold">
-          Playing as: {playerName}
-        </Badge>
-      </div>
+    <div className="flex h-screen flex-col gap-2 overflow-hidden p-3">
+      {topBar}
 
-      {observation.data?.task_description && (
-        <div className="mb-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold text-blue-700">Mission Objective</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-gray-800 leading-relaxed">{observation.data.task_description}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        {/* Game Status */}
-        <div className="lg:col-span-2 mb-2">
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <CardTitle className="text-xl font-semibold">Game: {lobbyId}</CardTitle>
-                  <Badge variant="outline" className="capitalize font-medium">
-                    {gameState?.phase || "Input Phase"}
-                  </Badge>
-                </div>
-                {isCreator && (
-                  <Button variant="destructive" size="sm" onClick={() => setShowStopConfirm(true)}>
-                    <StopCircle className="h-4 w-4 mr-2" /> Stop Game
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-          </Card>
+      <div className="flex min-h-0 flex-1 gap-3">
+        {/* Left: observation (58%) */}
+        <div className="flex min-h-0 w-[58%] flex-col">
+          <ObservationFrame
+            imageUrl={observation.image_url}
+            waiting={waitingForNextTimestep}
+            imgRef={imgRef}
+            hoverCoords={hoverCoords}
+            onMouseMove={handleImageMouseMove}
+            onMouseLeave={handleImageMouseLeave}
+            onClick={handleImageClick}
+            clickable={canTarget}
+            marker={marker}
+            hint={canTarget ? "Click the minimap to set a target" : null}
+          />
         </div>
 
-        {/* Left Column - Observation */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-lg flex items-center">
-                  <Eye className="h-5 w-5 mr-2" />
-                  Observation
-                </CardTitle>
-                <Badge>{role}</Badge>
+        {/* Right: agent, action, chat (42%) */}
+        <div className="flex min-h-0 w-[42%] flex-col gap-2">
+          {/* Your agent */}
+          <div className={cn("flex-shrink-0", card)}>
+            <div className="flex items-center gap-2 border-b px-3 py-2.5">
+              <AgentIcon className={cn("h-4 w-4", meta.text)} />
+              <span className="text-sm font-semibold">{myLabel}</span>
+              <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-stone-700">
+                <span className={cn("h-2 w-2 rounded-full", alive ? "bg-green-500" : "bg-red-500")} />
+                {alive ? "Alive" : "Destroyed"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-3 px-3 py-2.5">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[11px] leading-[14px] text-muted-foreground">Position</span>
+                <span className="font-mono text-[13px] tabular leading-[18px]">{position ? `(${position[0]}, ${position[1]})` : "—"}</span>
               </div>
-            </CardHeader>
-            <CardContent className="p-6">
-              {waitingForNextTimestep ? (
-                <div className="h-[300px] bg-blue-50 rounded-lg flex items-center justify-center mb-6 border-2 border-blue-200">
-                  <div className="text-center space-y-3">
-                    <Loader2 className="h-10 w-10 animate-spin mx-auto text-blue-600" />
-                    <div>
-                      <p className="text-blue-700 font-semibold text-lg">Waiting for next observation</p>
-                      <p className="text-blue-600 text-sm mt-1">All actions submitted, processing next timestep...</p>
-                    </div>
-                  </div>
+              {showsWater ? (
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[11px] leading-[14px] text-muted-foreground">Water</span>
+                  <span className="font-mono text-[13px] tabular leading-[18px]">{Math.round(extra![1])}/5</span>
                 </div>
-              ) : observation.image_url ? (
-                <div className="mb-6 relative">
-                  <img
-                    ref={imgRef}
-                    src={observation.image_url}
-                    alt={`Observation for ${role}`}
-                    className="w-full rounded-lg border shadow-sm"
-                    onMouseMove={handleImageMouseMove}
-                    onMouseLeave={handleImageMouseLeave}
-                  />
-                  {hoverCoords && (
-                    <div className="absolute top-2 left-2 bg-black/75 text-white text-xs px-2 py-1 rounded pointer-events-none font-mono z-10">
-                      ({hoverCoords.gridX}, {hoverCoords.gridY}){hoverCoords.label ? ` - ${hoverCoords.label}` : ''}
-                    </div>
-                  )}
+              ) : carrying !== null ? (
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[11px] leading-[14px] text-muted-foreground">Carrying</span>
+                  <span className="text-[13px] leading-[18px]">{carrying}</span>
                 </div>
               ) : (
-                <div className="h-[300px] bg-gray-50 rounded-lg flex items-center justify-center mb-6 border-2 border-dashed border-gray-300">
-                  <div className="text-center">
-                    <Eye className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                    <p className="text-gray-500 font-medium">No observation image available</p>
-                  </div>
-                </div>
+                <div />
               )}
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[11px] leading-[14px] text-muted-foreground">Team</span>
+                <span className="inline-flex items-center gap-1 truncate text-[13px] leading-[18px]">
+                  {myManager ? (
+                    <>
+                      <ManagerCrown className="h-3 w-3 text-blue-600" />
+                      {teamNameOf(myManager) ? `${teamNameOf(myManager)} · ` : ""}
+                      {label(myManager)}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <h3 className="text-lg font-semibold">Agent Status</h3>
-                  <Badge variant="secondary" className="font-medium">{role}</Badge>
+          {/* Action */}
+          <div className={cn("flex-shrink-0", card)}>
+            {aiRun ? (
+              <div className="flex flex-col gap-1.5 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-brand" />
+                  <span className="text-[13px] font-semibold">This agent is run by the AI</span>
                 </div>
-
-                {!waitingForNextTimestep && (
-                  <div className="grid gap-3">
-                    <Card className="p-4 bg-gray-50">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-semibold text-gray-700">Agent Type</span>
-                        <Badge variant="secondary" className="font-medium">
-                          {observation.data?.type === -1 ? "Manager"
-                            : observation.data?.type === 0 ? "Firefighter"
-                            : observation.data?.type === 1 ? "Bulldozer"
-                            : observation.data?.type === 2 ? "Drone"
-                            : observation.data?.type === 3 ? "Helicopter"
-                            : "Unknown"}
+                {observation.data?.options?.[0]?.description && (
+                  <p className="text-xs text-stone-700">Now: {friendly(observation.data.options[0].description)}</p>
+                )}
+              </div>
+            ) : hasActed ? (
+              <>
+                <div className="flex items-baseline justify-between gap-2 px-3 pb-2 pt-2.5">
+                  <span className="text-[13px] font-semibold">Action</span>
+                  <span className="text-xs text-muted-foreground">Step {currentTimestep}</span>
+                </div>
+                <div className="flex items-center gap-2.5 px-3 pb-2.5">
+                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-green-200 bg-green-50">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-sm font-semibold">Submitted</span>
+                    {lastAction && <span className="truncate font-mono text-xs tabular text-stone-700">{lastAction}</span>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t bg-background px-3 py-2.5">
+                  {waitingOn.length > 0 ? (
+                    <>
+                      <span className="text-xs text-stone-700">Waiting for</span>
+                      {waitingOn.map((name) => (
+                        <Badge key={name} variant="outline" className="gap-1 font-semibold">
+                          <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
+                          {name}
                         </Badge>
-                      </div>
-                    </Card>
-
-                    {observation.data?.type !== -1 && observation.data?.last_position && (
-                      <Card className="p-4 bg-gray-50">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-semibold text-gray-700">Current Position</span>
-                          <Badge variant="outline" className="font-medium">
-                            ({observation.data.last_position[0]}, {observation.data.last_position[1]})
-                          </Badge>
-                        </div>
-                      </Card>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Action Input for human_control mode */}
-              <div className="mt-6 pt-6 border-t">
-                {hasActed ? (
-                  <div className="text-center py-8 space-y-3">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                      <PlayCircle className="h-8 w-8 text-green-600" />
-                    </div>
-                    <div>
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-medium px-4 py-2">
-                        Action Submitted
-                      </Badge>
-                      <p className="text-sm text-gray-600 mt-2">
-                        Waiting for other players to submit their actions...
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <h3 className="text-lg font-semibold">Action Input</h3>
-                      <PlayCircle className="h-5 w-5 text-gray-500" />
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="action-type" className="text-sm font-semibold">Action Type</Label>
-                        <Select
-                          value={selectedActionType.toString()}
-                          onValueChange={(value) => setSelectedActionType(Number.parseInt(value))}
-                        >
-                          <SelectTrigger className="h-11">
-                            <SelectValue placeholder="Select action type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.entries(ACTION_DEFINITIONS[observation.data?.type ?? 0] || {}).map(
-                              ([type, def]) => (
-                                <SelectItem key={type} value={type} className="py-3">
-                                  <div className="font-medium">{def.name}</div>
-                                </SelectItem>
-                              ),
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {ACTION_DEFINITIONS[observation.data?.type ?? 0]?.[selectedActionType]?.needsCoords && (
-                        <div className="space-y-2">
-                          <Label className="text-sm font-semibold">Target Coordinates</Label>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <Label htmlFor="param1" className="text-xs text-gray-600">X Coordinate</Label>
-                              <Input
-                                id="param1"
-                                type="number"
-                                value={actionParam1}
-                                onChange={(e) => setActionParam1(Number.parseInt(e.target.value) || 0)}
-                                placeholder="X"
-                                className="h-11"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label htmlFor="param2" className="text-xs text-gray-600">Y Coordinate</Label>
-                              <Input
-                                id="param2"
-                                type="number"
-                                value={actionParam2}
-                                onChange={(e) => setActionParam2(Number.parseInt(e.target.value) || 0)}
-                                placeholder="Y"
-                                className="h-11"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <Button className="w-full h-12 text-base font-semibold" onClick={handleSubmitAction}>
-                        <PlayCircle className="h-5 w-5 mr-2" />
-                        Submit Action
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column - Communication */}
-        <div>
-          <Card className="h-full flex flex-col min-h-[200px]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center">
-                <MessageSquare className="h-5 w-5 mr-2" />
-                Communication
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-grow flex flex-col p-6">
-              <div className="mb-4">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Available Chats</h4>
-                <div className="flex flex-col space-y-2">
-                  {chats.map((chat) => (
-                    <Button
-                      key={chat.id}
-                      variant={chat.id === selectedChatId ? "default" : "outline"}
-                      className="w-full justify-start text-left font-medium h-11"
-                      onClick={() => setSelectedChatId(chat.id)}
-                    >
-                      <MessageSquare className="h-4 w-4 mr-2 flex-shrink-0" />
-                      <span className="truncate">{chat.name}</span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex-grow flex flex-col">
-                <div className="flex items-center gap-2 mb-3">
-                  <h4 className="text-sm font-semibold text-gray-700">Messages</h4>
-                  {selectedChat && (
-                    <Badge variant="outline" className="text-xs">
-                      {selectedChat.participants.length} participants
-                    </Badge>
+                      ))}
+                    </>
+                  ) : (
+                    <span className="text-xs text-stone-700">Everyone has acted. Running the step…</span>
                   )}
                 </div>
-
-                <ScrollArea className="flex-grow border rounded-lg p-4 mb-4 bg-gray-50">
-                  <div className="space-y-4">
-                    {filteredMessages.length > 0 ? (
-                      filteredMessages.map((msg: Message) => (
-                        <div
-                          key={msg.id}
-                          className={`p-3 rounded-lg shadow-sm ${
-                            msg.sender === playerName
-                              ? "bg-primary/10 ml-8 border border-primary/20"
-                              : "bg-white mr-8 border"
-                          }`}
-                        >
-                          <div className="flex justify-between items-start text-xs text-gray-500 mb-2">
-                            <span className="font-semibold">
-                              {msg.sender}
-                              <span className="font-normal text-gray-400 ml-1">({msg.sender_role})</span>
-                            </span>
-                            <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
-                          </div>
-                          <p className="text-sm leading-relaxed">{msg.content}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center text-gray-500 py-8">
-                        <MessageSquare className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                        <p className="font-medium">No messages yet</p>
-                        <p className="text-xs mt-1">Start the conversation!</p>
-                      </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                </ScrollArea>
-
-                <div className="space-y-2">
-                  <div className="flex space-x-2">
-                    <Input
-                      placeholder="Type your message..."
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault()
-                          handleSendMessage()
-                        }
-                      }}
-                      className="h-11"
-                    />
-                    <Button
-                      size="icon"
-                      onClick={handleSendMessage}
-                      disabled={!message.trim() || !selectedChatId}
-                      className="h-11 w-11"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="text-xs text-gray-500 px-1">
-                    {selectedChat ? (
-                      <span>
-                        <strong>Participants:</strong> {selectedChat.participants.join(", ")}
-                      </span>
-                    ) : (
-                      "Select a chat to view messages"
-                    )}
-                  </div>
+              </>
+            ) : (
+              <>
+                <div className="px-3 pb-2 pt-2.5 text-[13px] font-semibold">Action</div>
+                <div className="flex flex-wrap gap-1.5 px-3">
+                  {Object.entries(ACTION_DEFINITIONS[agentType] || {}).map(([type, def]) => {
+                    const active = Number(type) === selectedActionType
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setSelectedActionType(Number(type))}
+                        className={cn(
+                          "inline-flex h-[30px] items-center rounded-md border px-2.5 text-[13px] font-medium transition-colors",
+                          active ? "border-brand bg-brand text-white" : "bg-card hover:bg-muted",
+                        )}
+                      >
+                        {def.name}
+                      </button>
+                    )
+                  })}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                {currentActionDef?.needsCoords && (
+                  <div className="flex items-center gap-2 px-3 pt-2.5">
+                    <span className="text-xs font-medium">Target</span>
+                    <span className="text-[11px] text-muted-foreground">X</span>
+                    <Input
+                      type="number"
+                      aria-label="Target X"
+                      value={actionParam1}
+                      onChange={(e) => setActionParam1(Number.parseInt(e.target.value) || 0)}
+                      className="h-8 w-[76px] font-mono text-[13px]"
+                    />
+                    <span className="text-[11px] text-muted-foreground">Y</span>
+                    <Input
+                      type="number"
+                      aria-label="Target Y"
+                      value={actionParam2}
+                      onChange={(e) => setActionParam2(Number.parseInt(e.target.value) || 0)}
+                      className="h-8 w-[76px] font-mono text-[13px]"
+                    />
+                  </div>
+                )}
+                <div className="px-3 pb-3 pt-2.5">
+                  <Button className="w-full" onClick={handleSubmitAction} disabled={!alive || waitingForNextTimestep}>
+                    Submit action
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Chat */}
+          <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", card)}>
+            <div className="flex flex-shrink-0 items-center gap-2 border-b bg-background px-2.5 py-2">
+              <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+              {chats.length > 0 ? (
+                <Segmented
+                  aria-label="Chat"
+                  value={selectedChatId || chats[0].id}
+                  onChange={setSelectedChatId}
+                  options={chats.map((c) => ({ value: c.id, label: chatTitle(c.id) }))}
+                />
+              ) : (
+                <span className="text-[13px] text-muted-foreground">Chat</span>
+              )}
+              {selectedChat && (
+                <span className="ml-auto truncate text-[11px] text-muted-foreground" title={selectedChat.participants.map(label).join(", ")}>
+                  {selectedChat.participants.length} in this chat
+                </span>
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
+              {filteredMessages.length > 0 ? (
+                filteredMessages.map((msg: Message, i: number) => {
+                  const mine = msg.sender === playerName
+                  const fromAgent = agentIdFromName(msg.sender) !== null
+                  // The backend sends team-chat messages as {sender, message, timestamp}
+                  const text = friendly(msg.content ?? (msg as any).message ?? "")
+                  const key = msg.id ?? `${msg.timestamp}-${i}`
+                  return fromAgent ? (
+                    <ChatBubble key={key} who="agent" name={senderLine(msg)} text={text} time={msg.timestamp} />
+                  ) : (
+                    <ChatBubble key={key} who="human" mine={mine} name={senderLine(msg)} text={text} time={msg.timestamp} />
+                  )
+                })
+              ) : (
+                <div className="py-6 text-center text-stone-400">
+                  <MessageSquare className="mx-auto mb-1 h-7 w-7 opacity-40" />
+                  <p className="text-xs">No messages yet</p>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="flex flex-shrink-0 gap-1.5 border-t p-2">
+              <Input
+                placeholder={selectedChat ? `Message ${chatTitle(selectedChat.id)}…` : "Select a chat"}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSendMessage()
+                  }
+                }}
+                disabled={!selectedChatId}
+                className="h-9 text-[13px]"
+              />
+              <Button size="icon" onClick={handleSendMessage} disabled={!message.trim() || !selectedChatId} className="h-9 w-9 flex-shrink-0">
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
       {stopGameDialog}
-        {announcementPopup}
+      {announcementPopup}
     </div>
   )
 }
+

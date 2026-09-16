@@ -359,17 +359,29 @@ def create_chats_for_lobby(lobby):
     
     return chats
 
-def convert_chats_to_names(chats_data, id_to_name):
-    """Convert chat data from IDs to names for frontend"""
+def human_names_by_id(lobby, name_to_id):
+    """Role id -> player name for every role a human has claimed"""
+    return {
+        name_to_id[info["role"]]: player_name
+        for player_name, info in lobby["players"].items()
+        if info.get("role") in name_to_id and not info.get("is_ai", True)
+    }
+
+def convert_chats_to_names(chats_data, id_to_name, human_by_id=None):
+    """Convert chat data from IDs to names for frontend.
+    Humans appear under their player name; sender_role carries the role (AGENT_n) either way."""
+    human_by_id = human_by_id or {}
     converted = {}
     for chat_id, chat_data in chats_data.items():
         converted[chat_id] = {
-            "participants": [id_to_name.get(pid, f"UNKNOWN_{pid}") for pid in chat_data["participants"]],
+            "participants": [human_by_id.get(pid) or id_to_name.get(pid, f"UNKNOWN_{pid}") for pid in chat_data["participants"]],
             "messages": []
         }
         for msg in chat_data["messages"]:
+            sid = msg["sender_id"]
             converted[chat_id]["messages"].append({
-                "sender": id_to_name.get(msg["sender_id"], f"UNKNOWN_{msg['sender_id']}"),
+                "sender": human_by_id.get(sid) or id_to_name.get(sid, f"UNKNOWN_{sid}"),
+                "sender_role": id_to_name.get(sid),
                 "message": msg["message"],
                 "timestamp": msg["timestamp"]
             })
@@ -1061,13 +1073,11 @@ async def send_message(request: SendMessageRequest):
     if request.player_name not in lobby["players"]:
         raise HTTPException(status_code=403, detail="Player not in lobby")
     
-    # Get name to ID mapping
+    # The sender is identified by the role they claimed (AGENT_n)
     name_to_id, _ = get_name_id_mappings(lobby)
-    
-    if request.player_name not in name_to_id:
-        raise HTTPException(status_code=400, detail="Player name not found in lobby")
-    
-    sender_id = name_to_id[request.player_name]
+    sender_id = name_to_id.get(lobby["players"][request.player_name].get("role"))
+    if not sender_id:
+        raise HTTPException(status_code=400, detail="Pick a role before sending messages")
     
     # Send message to algorithm service
     try:
@@ -1117,9 +1127,9 @@ async def get_chats(lobby_id: str, player_name: str):
         
         all_chats = response.json().get("chats", {})
         
-        # Get name/ID mappings
+        # Players are known by the role they claimed (AGENT_n), not by their display name
         name_to_id, id_to_name = get_name_id_mappings(lobby)
-        player_id = name_to_id.get(player_name)
+        player_id = name_to_id.get(lobby["players"][player_name].get("role"))
         
         if not player_id:
             return {"chats": {}}
@@ -1131,7 +1141,7 @@ async def get_chats(lobby_id: str, player_name: str):
                 filtered_chats[chat_id] = chat_data
         
         # Convert IDs to names
-        converted_chats = convert_chats_to_names(filtered_chats, id_to_name)
+        converted_chats = convert_chats_to_names(filtered_chats, id_to_name, human_names_by_id(lobby, name_to_id))
         
         return {"chats": converted_chats}
             
