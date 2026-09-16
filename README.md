@@ -450,9 +450,9 @@ assets/                  images used by this README
 
 REW-Wildfire builds upon and integrates several projects developed at the Duke University [General Robotics Lab](http://generalroboticslab.com/):
 
-- **[CREW-Wildfire](https://arxiv.org/abs/2507.05178)** — A large-scale benchmark for agentic multi-agent collaboration in wildfire response environments.
 - **[ORCH](https://generalroboticslab.com/ORCH)** — An organizational framework for coordinating large and heterogeneous teams of LLM-powered agents. [[Paper](https://arxiv.org/abs/2609.11737)] [[Code](https://github.com/generalroboticslab/ORCH)]
-- **[CREW](http://www.generalroboticslab.com/CREW)** — A platform for studying human-AI teaming and multi-agent collaboration. [[Paper](https://arxiv.org/abs/2408.00170)]
+- **[CREW-Wildfire](https://arxiv.org/abs/2507.05178)** — A large-scale benchmark for agentic multi-agent collaboration in wildfire response environments. [[Paper](https://openreview.net/pdf?id=8mr27qFzKR)] [[Code](https://github.com/generalroboticslab/CREW/tree/main/crew-algorithms/crew_algorithms/wildfire_alg)]
+- **[CREW](http://www.generalroboticslab.com/CREW)** — A platform for studying human-AI teaming and multi-agent collaboration. [[Paper](https://arxiv.org/abs/2408.00170)] [[Code](https://github.com/generalroboticslab/CREW)]
 
 If you use this software in your research, please consider citing all three projects:
 
@@ -483,6 +483,6 @@ If you use this software in your research, please consider citing all three proj
       booktitle={Preprint},
       year={2024}
 }
-
+```
 
 Released under the Apache 2.0 license (see `LICENSE`).
