@@ -448,11 +448,15 @@ assets/                  images used by this README
 
 ## Citation and license
 
-CREW-Wildfire was created by [Jonathan Hyun](https://github.com/jphyun2019), [Nicholas Waytowich](https://nicholaswaytowich.com/) and [Boyuan Chen](http://boyuanchen.com/) at the Duke University [General Robotics Lab](http://generalroboticslab.com/), on top of the CREW platform by [Lingyu Zhang](https://lingyu98.github.io/), [Zhengran Ji](https://jzr01.github.io/) and Boyuan Chen ([project website](http://www.generalroboticslab.com/CREW)). The WILDFIRE algorithm that drives the AI agents is described in the ORCH paper ([arXiv:2609.11737](https://arxiv.org/abs/2609.11737), [original code](https://github.com/generalroboticslab/ORCH)); the platform is described in the CREW paper ([arXiv:2408.00170](https://arxiv.org/abs/2408.00170)).
+REW-Wildfire builds upon and integrates several projects developed at the Duke University [General Robotics Lab](http://generalroboticslab.com/):
 
-If you use this software in your research, please cite all three:
+- **[CREW-Wildfire](https://arxiv.org/abs/2507.05178)** — A large-scale benchmark for agentic multi-agent collaboration in wildfire response environments.
+- **[ORCH](https://generalroboticslab.com/ORCH)** — An organizational framework for coordinating large and heterogeneous teams of LLM-powered agents. [[Paper](https://arxiv.org/abs/2609.11737)] [[Code](https://github.com/generalroboticslab/ORCH)]
+- **[CREW](http://www.generalroboticslab.com/CREW)** — A platform for studying human-AI teaming and multi-agent collaboration. [[Paper](https://arxiv.org/abs/2408.00170)]
 
-```
+If you use this software in your research, please consider citing all three projects:
+
+```bibtex
 @misc{ji2026orchorganizationalprinciplesenable,
       title={ORCH: Organizational Principles Enable Collective Intelligence in Embodied AI},
       author={Zhengran Ji and Jonathan Hyun and Boyuan Chen},
@@ -464,13 +468,13 @@ If you use this software in your research, please cite all three:
 }
 
 @misc{hyun2025crewwildfirebenchmarkingagenticmultiagent,
-      title={CREW-WILDFIRE: Benchmarking Agentic Multi-Agent Collaborations at Scale}, 
+      title={CREW-WILDFIRE: Benchmarking Agentic Multi-Agent Collaborations at Scale},
       author={Jonathan Hyun and Nicholas R Waytowich and Boyuan Chen},
       year={2025},
       eprint={2507.05178},
       archivePrefix={arXiv},
       primaryClass={cs.MA},
-      url={https://arxiv.org/abs/2507.05178}, 
+      url={https://arxiv.org/abs/2507.05178},
 }
 
 @inproceedings{zhang2024crew,
@@ -479,6 +483,6 @@ If you use this software in your research, please cite all three:
       booktitle={Preprint},
       year={2024}
 }
-```
+
 
 Released under the Apache 2.0 license (see `LICENSE`).
